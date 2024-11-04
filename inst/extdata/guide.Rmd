@@ -1,0 +1,75 @@
+---
+output: github_document
+---
+
+<!-- README.md is generated from README.Rmd. Please edit that file -->
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  out.width = "100%"
+)
+```
+
+# Welcome to the DPM Dashboard
+
+This interactive dashboard empowers you to explore and model your data using the dynamic population model (DPM). This guide will walk you through the features and functionalities of the dashboard, helping you make the most of your data insights.
+
+## 0. Introduction
+
+The Dynamic Population Model (DPM) aims to provide a coherent statistical demographic accounting framework. The core of this framework is a set of internally consistent estimates of population, births, deaths, and migration by age, sex, and time.
+
+The first step in producing the population estimate is to define the system models, these are constructed using estimated rates of births, deaths, and migration, and associated measures of uncertainty that approximate what a skilled analyst would know about such demographic trends.
+
+The next step is to estimate statistical data models for population stocks and flows. They incorporate the variability seen in the data because of systematic inaccuracies, including coverage and reporting error. These statistical models approximate what a skilled analyst would know about the quality of the data sources.
+
+
+## 1. Getting Started
+
+### 1.1 Global Configuration
+
+- Sets useful global parameters for the subsequent model running 
+  - global_data_dir : Defaults to the /data directory for dummy data, set to location of any data used for system/data models.
+  - global_output_dir : Defaults to the /output directory, set to location to save results.RDS file/.csv file from 'Fit Model' tab.
+  - global_time_selection : Defaults to empty, optional parameter to subset all data to for testing (comma separated years).
+  - global_seed_value : Defaults to a random prime number, can be used for reproducibility.
+
+### 1.2 System Models
+
+- Define the 4 required system models for births, deaths, ins, and outs.
+- Rate dispersion can be a single numeric value or can be a table if data is available.
+
+### 1.3 Data Models
+
+- Define data models for births & deaths (required)
+- Define any optional data models from admin data (e.g. stocks, flows (ins, outs etc))
+- Can select from the currently available data models (from accountTMB)
+  - Exact Data Model
+  - Normal Data Model
+  - T-Dist Data Model
+  - Negative Binomial Data Model
+  - Poisson Data Model
+- Can add more data models to the list than you will use in the model.
+- Unwanted data models can be deleted from the list here as well, data models in the dashboard are defined by their 'dm_name' value so these must be unique. 
+
+### 1.4 Fit Models
+
+- The loaded system models will show at the top.
+- Select the required data models from those loaded using the checkboxes.
+- Fit the model.
+- The population and migration tables should populate.
+
+### 1.5 Population Estimates
+
+- Interactive population plot, can select different 'Time', 'Sex', and a column to compare against (e.g. 'stock' if one was used)
+
+### 1.6 Migration Estimates
+
+- Interactive migration plots (immigration, emigration), can select different 'Time', 'Sex', and a column to compare against (e.g. 'immig'/'emig' if available.)
+
+### 1.7 Compare Setups
+
+- Select two setups from the available data models loaded into the dashboard and compare the outputs.
+- Interactive plots for population, immigration and emigration estimates. 
+
