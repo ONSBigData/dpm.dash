@@ -13,7 +13,7 @@ knitr::opts_chunk$set(
 )
 ```
 
-# dpm.dashboard
+# dpm_dash
 
 ## Overview
  
@@ -37,7 +37,7 @@ If you have linked your RStudio installation to GitHub you should be able to ins
 # install.packages("devtools")
 library(devtools)
 
-devtools::install_github(".../dpm.dashboard", build_vignettes = TRUE, INSTALL_opts = "--no-multiarch")
+devtools::install_github("ONSBigData/dpm_dash", build_vignettes = TRUE, INSTALL_opts = "--no-multiarch")
 ```
 
 If you have not/are unable to link your RStudio installation to GitHub (you may encounter a 404 error when attempting the previous approach) you can also install the package in two alternative ways
@@ -50,7 +50,7 @@ Download a copy of the package repository as a .zip file (option in 'Code', belo
 # install.packages("devtools")
 library(devtools)
 
-devtools::install_local("C:/.../Downloads/dpm.dashboard-main.zip", build_vignettes = TRUE, INSTALL_opts = "--no-multiarch")
+devtools::install_local("C:/.../Downloads/dpm_dash-main.zip", build_vignettes = TRUE, INSTALL_opts = "--no-multiarch")
 ```
 
 #### Install locally from cloned repository
@@ -61,9 +61,9 @@ Clone the repository (options in 'Code' to HTTPS/SSH paths) and build the packag
 # install.packages("devtools")
 library(devtools)
 
-dpm.dashboard_build <- devtools::build("~/put/the/package/path/here")
+dpm_dash_build <- devtools::build("~/put/the/package/path/here")
 
-devtools::install_local(dpm.dashboard_build, build_vignettes = TRUE, INSTALL_opts = "--no-multiarch")
+devtools::install_local(dpm_dash_build, build_vignettes = TRUE, INSTALL_opts = "--no-multiarch")
 ```
 
 ### Usage (example)
@@ -72,12 +72,12 @@ Once you have installed the dpm.dashboard package all you need to do to run the 
 is using the run_dpm_dashboard() function
 
 ```{r dpm_dashboard, eval=FALSE}
-dpm.dashboard::run_dpm_dashboard()
+dpm_dash::run_dev_dash()
 
 or
 
-library(dpm.dashboard)
-run_dpm_dashboard()
+library(dpm_dash)
+run_dev_dash()
 ```
 
 This will launch the dashboard, allowing us to get started with using the DPM. 

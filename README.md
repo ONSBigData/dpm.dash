@@ -1,7 +1,7 @@
 
 <!-- README.md is generated from README.Rmd. Please edit that file -->
 
-# dpm.dashboard
+# dpm_dash
 
 ## Overview
 
@@ -32,7 +32,7 @@ install_github method from the devtools package
 # install.packages("devtools")
 library(devtools)
 
-devtools::install_github(".../dpm.dashboard", build_vignettes = TRUE, INSTALL_opts = "--no-multiarch")
+devtools::install_github("ONSBigData/dpm_dash", build_vignettes = TRUE, INSTALL_opts = "--no-multiarch")
 ```
 
 If you have not/are unable to link your RStudio installation to GitHub
@@ -50,7 +50,7 @@ the path to the .zip file download location)
 # install.packages("devtools")
 library(devtools)
 
-devtools::install_local("C:/.../Downloads/dpm.dashboard-main.zip", build_vignettes = TRUE, INSTALL_opts = "--no-multiarch")
+devtools::install_local("C:/.../Downloads/dpm_dash-main.zip", build_vignettes = TRUE, INSTALL_opts = "--no-multiarch")
 ```
 
 #### Install locally from cloned repository
@@ -62,9 +62,9 @@ the package using the build() method from the devtools package
 # install.packages("devtools")
 library(devtools)
 
-dpm.dashboard_build <- devtools::build("~/put/the/package/path/here")
+dpm_dash_build <- devtools::build("~/put/the/package/path/here")
 
-devtools::install_local(dpm.dashboard_build, build_vignettes = TRUE, INSTALL_opts = "--no-multiarch")
+devtools::install_local(dpm_dash_build, build_vignettes = TRUE, INSTALL_opts = "--no-multiarch")
 ```
 
 ### Usage (example)
@@ -73,12 +73,12 @@ Once you have installed the dpm.dashboard package all you need to do to
 run the dashboard is using the run_dpm_dashboard() function
 
 ``` r
-dpm.dashboard::run_dpm_dashboard()
+dpm_dash::run_dev_dash()
 
 or
 
-library(dpm.dashboard)
-run_dpm_dashboard()
+library(dpm_dash)
+run_dev_dash()
 ```
 
 This will launch the dashboard, allowing us to get started with using
