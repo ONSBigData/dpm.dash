@@ -295,7 +295,7 @@ server_dev <- function(input, output, session) {
         return()
       }
 
-      utils::read.csv(counts_uncertainty_file_path)
+      extraData$uncertainty <- utils::read.csv(counts_uncertainty_file_path)
 
       if (nchar(input$ratio_file) > 0) {
         if (file.exists(file.path(global_config()$data_dir, input$ratio_file))) {
@@ -306,12 +306,12 @@ server_dev <- function(input, output, session) {
       }
 
       extraData$scale_ratio <- input$scale_ratio
-
       extraData$sd_scaler <- input$sd_scaler
       extraData$sd_overide <- input$sd_overide
       extraData$min_sd <- input$min_sd
       extraData$count_scaler <- input$count_scaler
     } else if (input$data_model == "T-Dist Data Model") {
+
       if (input$scale_type == "Single Value") {
         extraData$scale_df <- input$scale_value
       } else {
@@ -329,8 +329,18 @@ server_dev <- function(input, output, session) {
         }
         extraData$scale_df <- utils::read.csv(scale_file_path)
       }
+
+      if (nchar(input$ratio_file) > 0) {
+        if (file.exists(file.path(global_config()$data_dir, input$ratio_file))) {
+          extraData$ratio <- utils::read.csv(file.path(global_config()$data_dir, input$ratio_file))
+        }
+      } else {
+        extraData$ratio <- input$ratio_value
+      }
+
       extraData$scale_ratio <- input$scale_ratio
       extraData$count_scaler <- input$count_scaler
+
     } else if (input$data_model == "Negative Binomial Data Model") {
       if (input$disp_type == "Single Value") {
         extraData$disp <- input$disp_value
@@ -577,7 +587,7 @@ server_dev <- function(input, output, session) {
       time_select = time_subset_vals,
       age_select = age_subset_vals,
       uncertainty_df = auxData()$uncertainty,
-      scale_df = auxData()$scale,
+      scale_df = auxData()$scale_df,
       disp = auxData()$disp,
       scale_ratio = auxData()$scale_ratio,
       ratio = auxData()$ratio,
@@ -1275,6 +1285,31 @@ server_dev <- function(input, output, session) {
             ggplot2::ggtitle("Immigration comparison")
 
           plotly::ggplotly(p) # Convert to interactive plot
+        } else if (!nzchar(input$compare_select_ins_1) | (input$compare_select_ins_1 %in% colnames(mig_comp_1_cols())) &
+          input$time_select_comp %in% unique(mig_res_comp()$time)) {
+          p <- ggplot2::ggplot(
+            mig_res_comp() %>%
+              dplyr::filter(
+                .data$time == input$time_select_comp,
+                .data$sex == input$sex_select_comp,
+                .data$setup == 1
+              ),
+            ggplot2::aes(
+              x = .data$age,
+              ymin = .data$ins.lower,
+              y = .data$ins.fitted,
+              ymax = .data$ins.upper,
+              color = as.factor(.data$setup)
+            )
+          ) +
+            ggplot2::geom_pointrange(
+              fatten = 0.5,
+              position = ggplot2::position_dodge(width = 0.5)
+            ) +
+            ggplot2::ylab("") +
+            ggplot2::ggtitle("Immigration comparison")
+
+          plotly::ggplotly(p) # Convert to interactive plot
         }
       } else if (input$setup_select == "Setup 2") {
         if (nzchar(input$compare_select_ins_2) & (input$compare_select_ins_2 %in% colnames(mig_comp_2_cols())) &
@@ -1312,7 +1347,7 @@ server_dev <- function(input, output, session) {
 
           plotly::ggplotly(p) # Convert to interactive plot
         } else if (!nzchar(input$compare_select_ins_2) | !(input$compare_select_ins_2 %in% colnames(mig_comp_2_cols())) &
-          input$time_select_comp %in% unique(mig_res_comp()$time)){
+          input$time_select_comp %in% unique(mig_res_comp()$time)) {
           p <- ggplot2::ggplot(
             mig_res_comp() %>%
               dplyr::filter(
@@ -1336,9 +1371,8 @@ server_dev <- function(input, output, session) {
             ggplot2::ggtitle("Immigration comparison")
 
           plotly::ggplotly(p) # Convert to interactive plot
-    }
+        }
       } else if (input$setup_select == "Both") {
-
         if (nzchar(input$compare_select_ins_1) & (input$compare_select_ins_1 %in% colnames(mig_comp_1_cols())) &
           nzchar(input$compare_select_ins_2) & (input$compare_select_ins_2 %in% colnames(mig_comp_2_cols())) &
           input$time_select_comp %in% unique(mig_res_comp()$time)) {
@@ -1383,7 +1417,7 @@ server_dev <- function(input, output, session) {
 
           plotly::ggplotly(p) # Convert to interactive plot
         } else if (nzchar(input$compare_select_ins_1) & (input$compare_select_ins_1 %in% colnames(mig_comp_1_cols())) &
-                   (input$time_select_comp %in% unique(mig_res_comp()$time))){
+          (input$time_select_comp %in% unique(mig_res_comp()$time))) {
           p <- ggplot2::ggplot(
             mig_res_comp() %>%
               dplyr::filter(
@@ -1416,7 +1450,7 @@ server_dev <- function(input, output, session) {
 
           plotly::ggplotly(p) # Convert to interactive plot
         } else if (nzchar(input$compare_select_ins_2) & (input$compare_select_ins_2 %in% colnames(mig_comp_2_cols())) &
-                   (input$time_select_comp %in% unique(mig_res_comp()$time))){
+          (input$time_select_comp %in% unique(mig_res_comp()$time))) {
           p <- ggplot2::ggplot(
             mig_res_comp() %>%
               dplyr::filter(
@@ -1449,8 +1483,8 @@ server_dev <- function(input, output, session) {
 
           plotly::ggplotly(p) # Convert to interactive plot
         } else if (!nzchar(input$compare_select_ins_1) | !(input$compare_select_ins_1 %in% colnames(mig_comp_1_cols())) &
-                   !nzchar(input$compare_select_ins_2) | !(input$compare_select_ins_2 %in% colnames(mig_comp_2_cols())) &
-                   input$time_select_comp %in% unique(mig_res_comp()$time)){
+          !nzchar(input$compare_select_ins_2) | !(input$compare_select_ins_2 %in% colnames(mig_comp_2_cols())) &
+          input$time_select_comp %in% unique(mig_res_comp()$time)) {
           p <- ggplot2::ggplot(
             mig_res_comp() %>%
               dplyr::filter(
@@ -1474,8 +1508,6 @@ server_dev <- function(input, output, session) {
 
           plotly::ggplotly(p) # Convert to interactive plot
         }
-
-
       }
     })
 
@@ -1489,7 +1521,7 @@ server_dev <- function(input, output, session) {
 
       if (input$setup_select == "Setup 1") {
         if (nzchar(input$compare_select_outs_1) & (input$compare_select_outs_1 %in% colnames(mig_comp_1_cols())) &
-          input$time_select_comp %in% unique(mig_res_comp()$time)) {
+          (input$time_select_comp %in% unique(mig_res_comp()$time))) {
           p <- ggplot2::ggplot(
             mig_res_comp() %>%
               dplyr::filter(
@@ -1522,10 +1554,35 @@ server_dev <- function(input, output, session) {
             ggplot2::ggtitle("Emigration comparison")
 
           plotly::ggplotly(p) # Convert to interactive plot
+        } else if (!nzchar(input$compare_select_outs_1) | (input$compare_select_outs_1 %in% colnames(mig_comp_1_cols())) &
+          (input$time_select_comp %in% unique(mig_res_comp()$time))) {
+          p <- ggplot2::ggplot(
+            mig_res_comp() %>%
+              dplyr::filter(
+                .data$time == input$time_select_comp,
+                .data$sex == input$sex_select_comp,
+                .data$setup == 1
+              ),
+            ggplot2::aes(
+              x = .data$age,
+              ymin = .data$outs.lower,
+              y = .data$outs.fitted,
+              ymax = .data$outs.upper,
+              color = as.factor(.data$setup)
+            )
+          ) +
+            ggplot2::geom_pointrange(
+              fatten = 0.5,
+              position = ggplot2::position_dodge(width = 0.5)
+            ) +
+            ggplot2::ylab("") +
+            ggplot2::ggtitle("Emigration comparison")
+
+          plotly::ggplotly(p) # Convert to interactive plot
         }
       } else if (input$setup_select == "Setup 2") {
         if (nzchar(input$compare_select_outs_2) & (input$compare_select_outs_2 %in% colnames(mig_comp_2_cols())) &
-          input$time_select_comp %in% unique(mig_res_comp()$time)) {
+          (input$time_select_comp %in% unique(mig_res_comp()$time))) {
           p <- ggplot2::ggplot(
             mig_res_comp() %>%
               dplyr::filter(
@@ -1541,6 +1598,10 @@ server_dev <- function(input, output, session) {
               color = as.factor(.data$setup)
             )
           ) +
+            ggplot2::geom_pointrange(
+              fatten = 0.5,
+              position = ggplot2::position_dodge(width = 0.5)
+            ) +
             ggplot2::geom_point(
               data = mig_comp_2_cols() %>%
                 dplyr::filter(
@@ -1550,6 +1611,27 @@ server_dev <- function(input, output, session) {
               col = "darkblue",
               size = 0.3
             ) +
+            ggplot2::ylab("") +
+            ggplot2::ggtitle("Emigration comparison")
+
+          plotly::ggplotly(p) # Convert to interactive plot
+        } else if (!nzchar(input$compare_select_outs_2) | !(input$compare_select_outs_2 %in% colnames(mig_comp_2_cols())) &
+          (input$time_select_comp %in% unique(mig_res_comp()$time))) {
+          p <- ggplot2::ggplot(
+            mig_res_comp() %>%
+              dplyr::filter(
+                .data$time == input$time_select_comp,
+                .data$sex == input$sex_select_comp,
+                .data$setup == 2
+              ),
+            ggplot2::aes(
+              x = .data$age,
+              ymin = .data$outs.lower,
+              y = .data$outs.fitted,
+              ymax = .data$outs.upper,
+              color = as.factor(.data$setup)
+            )
+          ) +
             ggplot2::geom_pointrange(
               fatten = 0.5,
               position = ggplot2::position_dodge(width = 0.5)
@@ -1562,7 +1644,7 @@ server_dev <- function(input, output, session) {
       } else if (input$setup_select == "Both") {
         if (nzchar(input$compare_select_outs_1) & (input$compare_select_outs_1 %in% colnames(mig_comp_1_cols())) &
           nzchar(input$compare_select_outs_2) & (input$compare_select_outs_2 %in% colnames(mig_comp_2_cols())) &
-          input$time_select_comp %in% unique(mig_res_comp()$time)) {
+          (input$time_select_comp %in% unique(mig_res_comp()$time))) {
           p <- ggplot2::ggplot(
             mig_res_comp() %>%
               dplyr::filter(
@@ -1603,10 +1685,100 @@ server_dev <- function(input, output, session) {
             ggplot2::ggtitle("Emigration comparison")
 
           plotly::ggplotly(p) # Convert to interactive plot
+        } else if (nzchar(input$compare_select_outs_1) & (input$compare_select_outs_1 %in% colnames(mig_comp_1_cols())) &
+          (input$time_select_comp %in% unique(mig_res_comp()$time))) {
+          p <- ggplot2::ggplot(
+            mig_res_comp() %>%
+              dplyr::filter(
+                .data$time == input$time_select_comp,
+                .data$sex == input$sex_select_comp
+              ),
+            ggplot2::aes(
+              x = .data$age,
+              ymin = .data$outs.lower,
+              y = .data$outs.fitted,
+              ymax = .data$outs.upper,
+              color = as.factor(.data$setup)
+            )
+          ) +
+            ggplot2::geom_pointrange(
+              fatten = 0.5,
+              position = ggplot2::position_dodge(width = 0.5)
+            ) +
+            ggplot2::geom_point(
+              data = mig_comp_1_cols() %>%
+                dplyr::filter(
+                  .data$time == input$time_select_comp,
+                  .data$sex == input$sex_select_comp
+                ), ggplot2::aes(y = .data[[input$compare_select_outs_1]]),
+              col = "darkgreen",
+              size = 0.3
+            ) +
+            ggplot2::ylab("") +
+            ggplot2::ggtitle("Emigration comparison")
+
+          plotly::ggplotly(p) # Convert to interactive plot
+        } else if (nzchar(input$compare_select_outs_2) & (input$compare_select_outs_2 %in% colnames(mig_comp_2_cols())) &
+          (input$time_select_comp %in% unique(mig_res_comp()$time))) {
+          p <- ggplot2::ggplot(
+            mig_res_comp() %>%
+              dplyr::filter(
+                .data$time == input$time_select_comp,
+                .data$sex == input$sex_select_comp
+              ),
+            ggplot2::aes(
+              x = .data$age,
+              ymin = .data$outs.lower,
+              y = .data$outs.fitted,
+              ymax = .data$outs.upper,
+              color = as.factor(.data$setup)
+            )
+          ) +
+            ggplot2::geom_pointrange(
+              fatten = 0.5,
+              position = ggplot2::position_dodge(width = 0.5)
+            ) +
+            ggplot2::geom_point(
+              data = mig_comp_2_cols() %>%
+                dplyr::filter(
+                  .data$time == input$time_select_comp,
+                  .data$sex == input$sex_select_comp
+                ), ggplot2::aes(y = .data[[input$compare_select_outs_2]]),
+              col = "darkblue",
+              size = 0.3
+            ) +
+            ggplot2::ylab("") +
+            ggplot2::ggtitle("Emigration comparison")
+
+          plotly::ggplotly(p) # Convert to interactive plot
+        } else if (!nzchar(input$compare_select_outs_1) | !(input$compare_select_outs_1 %in% colnames(mig_comp_1_cols())) &
+          !nzchar(input$compare_select_outs_2) | !(input$compare_select_outs_2 %in% colnames(mig_comp_2_cols())) &
+          (input$time_select_comp %in% unique(mig_res_comp()$time))) {
+          p <- ggplot2::ggplot(
+            mig_res_comp() %>%
+              dplyr::filter(
+                .data$time == input$time_select_comp,
+                .data$sex == input$sex_select_comp
+              ),
+            ggplot2::aes(
+              x = .data$age,
+              ymin = .data$outs.lower,
+              y = .data$outs.fitted,
+              ymax = .data$outs.upper,
+              color = as.factor(.data$setup)
+            )
+          ) +
+            ggplot2::geom_pointrange(
+              fatten = 0.5,
+              position = ggplot2::position_dodge(width = 0.5)
+            ) +
+            ggplot2::ylab("") +
+            ggplot2::ggtitle("Emigration comparison")
+
+          plotly::ggplotly(p) # Convert to interactive plot
         }
       }
     })
-
 
     output$compAggPop <- shiny::renderUI({
       plotly::plotlyOutput(outputId = "comparing_agg_pop")
