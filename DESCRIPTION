@@ -1,4 +1,4 @@
-Package: dpm_dash
+Package: dpm.dash
 Title: A Dynamic Population Modelling (DPM) Dashboard
 Version: 0.1.0
 Authors@R: 
