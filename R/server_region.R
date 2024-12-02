@@ -44,11 +44,20 @@ server_region <- function(input, output, session) {
 
   # Observe global config save button press
   shiny::observeEvent(input$save_global_config, {
+    current_region_selection <- if(nzchar(input$region_selection)){
+      strsplit(input$region_selection, ',') |>
+        unlist() |>
+        trimws()}
+    else {
+      ""
+    }
+
     global_config(list(
       data_dir = if (nzchar(input$global_data_dir)) input$global_data_dir else default_data_dir, # Use default if empty
       output_dir = if (nzchar(input$global_output_dir)) input$global_output_dir else default_output_dir, # Use default if empty
       time_selection = if (nzchar(input$global_time_selection)) as.integer(unlist(strsplit(input$global_time_selection, ","))) else NULL,
-      seed_value = if (nzchar(input$global_seed_value)) input$global_seed_value else default_seed_value # Use default if empty
+      seed_value = if (nzchar(input$global_seed_value)) input$global_seed_value else default_seed_value, # Use default if empty,
+      region_selection = current_region_selection
     ))
     shiny::showModal(modalDialog(
       title = "Global Configuration Saved",
@@ -93,7 +102,16 @@ server_region <- function(input, output, session) {
 
       time_selection <- global_config()$time_selection
 
-      create_system_model(model, rates_df, disp, time_selection, lower_rates_limit, rate_scaler, rate_overide)
+      # This is what we need to vary by Local authority
+      # could just use create_system_model_region in a group map?
+      create_system_model_region(model,
+                                  rates_df,
+                                  disp,
+                                  global_config()$region_selection,
+                                  time_selection,
+                                  lower_rates_limit,
+                                  rate_scaler,
+                                  rate_overide)
     })
 
     if (file_error) { # Display a warning if any file errors occurred
@@ -237,7 +255,10 @@ server_region <- function(input, output, session) {
 
       time_selection <- global_config()$time_selection
 
-      create_system_model(model, rates_df, disp, time_selection, lower_rates_limit, rate_scaler, rate_overide)
+      # Again here, create it for system model region
+      create_system_model_region(model, rates_df, disp, time_selection, lower_rates_limit, rate_scaler, rate_overide)
+
+      #create_system_model(model, rates_df, disp, time_selection, lower_rates_limit, rate_scaler, rate_overide)
     })
 
     if (file_error) { # Display a warning if any file errors occurred
@@ -279,9 +300,8 @@ server_region <- function(input, output, session) {
     raw_counts <- utils::read.csv(counts_file_path)
 
     if ("region" %in% colnames(raw_counts)) {
-      raw_counts %>%
-        dplyr::filter(.data$region %in% global_config()$region_selection) %>%
-        dplyr::select(-.data$region)
+      raw_counts <- raw_counts %>%
+        dplyr::filter(.data$region %in% global_config()$region_selection)
 
       return(raw_counts)
     } else {
@@ -310,8 +330,7 @@ server_region <- function(input, output, session) {
 
       if ("region" %in% colnames(raw_uncertainty)) {
         raw_uncertainty <- raw_uncertainty %>%
-          dplyr::filter(.data$region %in% global_config()$region_selection) %>%
-          dplyr::select(-.data$region)
+          dplyr::filter(region %in% global_config()$region_selection)
 
         extraData$uncertainty <- raw_uncertainty
       } else {
@@ -506,6 +525,7 @@ server_region <- function(input, output, session) {
   shiny::observeEvent(input$create_births_data_model, {
     counts_file_path <- file.path(global_config()$data_dir, input[[paste0("births_counts_file")]])
 
+    print("Creating births models")
     # Check if the counts file exists
     if (!file.exists(counts_file_path)) {
       shinyWidgets::sendSweetAlert(
@@ -519,22 +539,32 @@ server_region <- function(input, output, session) {
 
     input_counts <- utils::read.csv(counts_file_path)
 
-    newObject <- create_data_model(
-      dm_name = "births",
-      series_name = "births",
-      dm_type = "Exact Data Model",
-      counts_df = input_counts
-    )
+    #  Output of this is named by region
+    newObject <- purrr::map(
+      unique(input_counts$region),
+      \(unique_region) input_counts |>
+        tibble::as_tibble() |>
+        dplyr::filter(region == unique_region) |>
+        dplyr::select(-region) %>%
+        create_data_model(
+          dm_name = "births",
+          series_name = "births",
+          dm_type = "Exact Data Model",
+          counts_df = .
+        )
+    ) |>
+      purrr::set_names(unique(input_counts$region))
+
     currentList <- datamod_list()
-    newObjectList <- list()
-    newObjectList[[newObject$nm_data]] <- newObject
-    datamod_list(c(currentList, newObjectList))
+    currentList[["births"]] <- newObject
+    datamod_list(currentList)
   })
 
   # Observe the create_data_model button to add new data model to the datamod_list
   shiny::observeEvent(input$create_deaths_data_model, {
     counts_file_path <- file.path(global_config()$data_dir, input[[paste0("deaths_counts_file")]])
 
+    print("Creating deaths models")
     # Check if the counts file exists
     if (!file.exists(counts_file_path)) {
       shinyWidgets::sendSweetAlert(
@@ -546,18 +576,26 @@ server_region <- function(input, output, session) {
       return() # Exit the function if the file doesn't exist
     }
 
-    input_counts <- utils::read.csv(counts_file_path)
+    input_counts <- utils::read.csv(counts_file_path) |>
+      dplyr::filter(region %in% global_config()$region_selection)
 
-    newObject <- create_data_model(
-      dm_name = "deaths",
-      series_name = "deaths",
-      dm_type = "Exact Data Model",
-      counts_df = input_counts
-    )
+    newObject <- purrr::map(
+      unique(input_counts$region),
+      \(unique_region) input_counts |>
+        dplyr::filter(region == unique_region) |>
+        dplyr::select(-region) %>%
+        create_data_model(
+          dm_name = "deaths",
+          series_name = "deaths",
+          dm_type = "Exact Data Model",
+          counts_df = .
+        )
+    ) |>
+      purrr::set_names(unique(input_counts$region))
+
     currentList <- datamod_list()
-    newObjectList <- list()
-    newObjectList[[newObject$nm_data]] <- newObject
-    datamod_list(c(currentList, newObjectList))
+    currentList[["deaths"]] <- newObject
+    datamod_list(currentList)
   })
 
   # Observe the create_data_model button to add new data model to the datamod_list
@@ -590,27 +628,28 @@ server_region <- function(input, output, session) {
       time_subset_vals <- NULL
     }
 
-    newObject <- create_data_model(
-      dm_name = input$dm_name,
-      series_name = input$series_name,
-      dm_type = input$data_model,
-      counts_df = mainData(),
-      time_select = time_subset_vals,
-      age_select = age_subset_vals,
-      uncertainty_df = auxData()$uncertainty,
-      scale_df = auxData()$scale,
-      disp = auxData()$disp,
-      scale_ratio = auxData()$scale_ratio,
-      ratio = auxData()$ratio,
-      sd_scaler = auxData()$sd_scaler,
-      sd_overide = auxData()$sd_overide,
-      min_sd = auxData()$min_sd,
-      count_scaler = auxData()$count_scaler
-    )
+    print("Setting up data model")
+    print(paste0("dm_name; ", input$dm_name))
+    print(paste0("series_name; ", input$series_name))
+
+    newObject <- purrr::map(
+      unique(mainData()$region),
+      \(unique_region) create_data_model_region(
+        dm_name = input$dm_name,
+        series_name = input$series_name,
+        dm_type = input$data_model,
+        counts_df = mainData(),
+        time_select = time_subset_vals,
+        age_select = age_subset_vals,
+        aux_data = auxData(),
+        unique_region = unique_region
+      )
+    ) |>
+      purrr::set_names(unique(mainData()$region))
+
     currentList <- datamod_list()
-    newObjectList <- list()
-    newObjectList[[newObject$nm_data]] <- newObject
-    datamod_list(c(currentList, newObjectList))
+    currentList[[input$dm_name]] <- newObject
+    datamod_list(currentList)
 
     # Clear form inputs
     updateTextInput(session, "dm_name", value = "")
@@ -647,11 +686,13 @@ server_region <- function(input, output, session) {
   output$loadedDataModels <- renderDT({
     dataModels <- datamod_list()
     if (length(dataModels) > 0) {
+      #TODO change this so that it takes the first element of each list
       modelSummaries <- lapply(dataModels, function(dm) {
+        # We take the first element here, all lists should be the same
         c(
-          dm_name = dm$nm_data,
-          series_name = dm$nm_series,
-          dm_type = class(dm)
+          dm_name = dm$dm_name,
+          series_name = dm$dm_series_name,
+          dm_type = dm$dm_type
         )
       })
       modelSummaryDF <- do.call(rbind, modelSummaries)
@@ -742,13 +783,22 @@ server_region <- function(input, output, session) {
 
   # Observe the 'fit_accout_model' button press to run accountTMB with loaded system models and selected data models
   shiny::observeEvent(input$fit_account_model, {
-    req(filtered_data_models(), sysmod_list(), global_config()$output_dir, global_config()$seed_value)
+    # TODO: add back in the requirement here
+    print("fitting model")
 
     models <- c("births", "deaths", "ins", "outs")
 
-    result <- accountTMB::estimate_account(datamods = filtered_data_models(), sysmods = filtered_system_models(), seed_in = global_config()$seed_value)
+    result <- purrr::map(
+      global_config()$region_selection,
+      \(region){
+        accountTMB::estimate_account(datamods = purrr::map(filtered_data_models(), purrr::pluck, region),
+                                     sysmods = purrr::map(filtered_system_models(), purrr::pluck, region),
+                                     seed_in = global_config()$seed_value)
+      }
+    )
 
     output_file <- file.path(global_config()$output_dir, "fit_model_result.RDS")
+    print("Saving model")
     saveRDS(result, output_file)
 
     showModal(modalDialog(
@@ -1058,8 +1108,12 @@ server_region <- function(input, output, session) {
 
     models <- c("births", "deaths", "ins", "outs")
 
-    result_1 <- accountTMB::estimate_account(datamods = filtered_data_models_1(), sysmods = filtered_sys_models_1(), seed_in = global_config()$seed_value)
-    result_2 <- accountTMB::estimate_account(datamods = filtered_data_models_2(), sysmods = filtered_sys_models_2(), seed_in = global_config()$seed_value)
+    result_1 <- accountTMB::estimate_account(datamods = filtered_data_models_1(),
+                                             sysmods = filtered_sys_models_1(),
+                                             seed_in = global_config()$seed_value)
+    result_2 <- accountTMB::estimate_account(datamods = filtered_data_models_2(),
+                                             sysmods = filtered_sys_models_2(),
+                                             seed_in = global_config()$seed_value)
 
     showModal(modalDialog(
       title = "Model fitted",

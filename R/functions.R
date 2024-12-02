@@ -1,3 +1,59 @@
+#' Create a named data model for a specific region
+#'
+#' @param dm_name A character string specifying the name of the data model.
+#' @param series_name A character string indicating the name of the time series within the data model.
+#' @param dm_type A character string defining the type of data model to create. Valid options are:
+#'   - "Exact Data Model"
+#'   - "Normal Data Model"
+#'   - "T-Dist Data Model"
+#'   - "Negative Binomial Data Model"
+#'   - "Poisson Data Model"
+#' @param counts_df A data frame containing the count data for the time series. It should have columns corresponding to time periods and the observed counts.
+#' @param count_scaler (Optional) A numeric scale term to apply to the count (default is 1)
+#' @param time_select (Optional) A subset selection of years to filter the data used in the datamodel to.
+#' @param age_select (Optional) A numeric subset selection of ages to filter the data used in the datamodel to.
+#' @return
+create_data_model_region <- function(
+    dm_name,
+    series_name,
+    dm_type,
+    counts_df,
+    count_scaler,
+    time_select,
+    age_select,
+    aux_data,
+    unique_region){
+
+  if(!is.null(aux_data$uncertainty)){
+    aux_data$uncertainty <- aux_data$uncertainty |>
+      dplyr::filter(region == unique_region) |>
+      dplyr::select(-region)
+  }
+
+  counts_df <- counts_df |>
+    dplyr::filter(region == unique_region) |>
+    dplyr::select(-region)
+
+  create_data_model(
+    dm_name = dm_name,
+    series_name = series_name,
+    dm_type = dm_type,
+    counts_df = counts_df,
+    time_select = time_select,
+    age_select = age_select,
+    uncertainty_df = aux_data$uncertainty,
+    scale_df = aux_data$scale,
+    disp = aux_data$disp,
+    scale_ratio = aux_data$scale_ratio,
+    ratio = aux_data$ratio,
+    sd_scaler = aux_data$sd_scaler,
+    sd_overide = aux_data$sd_overide,
+    min_sd = aux_data$min_sd,
+    count_scaler = aux_data$count_scaler
+  )
+}
+
+
 #' Create a accountTMB System Model
 #'
 #' @description
@@ -23,7 +79,13 @@
 #' my_sysmod <- create_system_model(model_name = "births", rates_df = my_rates_df, disp = 0.05)
 #'
 #' @export
-create_system_model <- function(model_name, rates_df, disp, time_selection = NULL, lower_rates_limit = 0, rate_scaler = 1, rate_overide = -1) {
+create_system_model <- function(model_name,
+                                rates_df,
+                                disp,
+                                time_selection = NULL,
+                                lower_rates_limit = 0,
+                                rate_scaler = 1,
+                                rate_overide = -1) {
   if (!is.null(time_selection)) {
     rates_df <- rates_df[rates_df$time %in% time_selection, ]
   }
@@ -73,21 +135,43 @@ create_system_model <- function(model_name, rates_df, disp, time_selection = NUL
 #' my_sysmod <- create_system_model(model_name = "births", rates_df = my_rates_df, disp = 0.05)
 #'
 #' @export
-create_system_model_region <- function(model_name, rates_df, disp, region_selection, time_selection = NULL, lower_rates_limit = 0) {
+create_system_model_region <- function(model_name,
+                                       rates_df,
+                                       disp,
+                                       region_selection,
+                                       time_selection = NULL,
+                                       lower_rates_limit = 0,
+                                       rate_scaler = 1,
+                                       rate_overide = -1) {
   if (!is.null(time_selection)) {
     rates_df <- rates_df[rates_df$time %in% time_selection, ]
   }
+  rates_df <- rates_df |>
+    dplyr::filter(region %in% region_selection) |>
+    dplyr::mutate(rate = dplyr::case_when(
+      rate < lower_rates_limit ~ lower_rates_limit,
+      .default = rate
+    )) |>
+    dplyr::rename(mean = rate)
 
-  sysmod <- accountTMB::sysmod(
-    mean = tibble::as_tibble(rates_df %>%
-      dplyr::filter(.data$region %in% region_selection) %>%
-      dplyr::mutate(rate = ifelse(.data$rate < lower_rates_limit, lower_rates_limit, .data$rate)) %>%
-      dplyr::rename(mean = .data$rate) %>%
-      dplyr::select(-c(.data$region))),
-    disp = disp,
-    nm_series = model_name
-  )
+  if (rate_overide > 0) {
+    rates_df <- rates_df %>%
+      dplyr::mutate(mean = rate_overide)
+  }
 
+  print(unique(rates_df$region))
+
+  sysmod <- purrr::map(
+    unique(rates_df$region),
+    \(unique_region) dplyr::filter(rates_df, region == unique_region) |>
+      tibble::as_tibble() |>
+      dplyr::select(-region) |>
+      accountTMB::sysmod(
+        disp = disp,
+        nm_series = model_name
+      )
+  ) |>
+    purrr::set_names(unique(rates_df$region))
   return(sysmod)
 }
 
