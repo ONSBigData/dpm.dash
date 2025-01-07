@@ -147,6 +147,8 @@ create_system_model_region <- function(model_name,
     rates_df <- rates_df[rates_df$time %in% time_selection, ]
   }
   rates_df <- rates_df |>
+    dplyr::select(tidyselect::all_of(c("region","time","age","rate")),
+                  tidyselect::any_of("sex")) |>
     dplyr::filter(region %in% region_selection) |>
     dplyr::mutate(rate = dplyr::case_when(
       rate < lower_rates_limit ~ lower_rates_limit,
@@ -154,12 +156,15 @@ create_system_model_region <- function(model_name,
     )) |>
     dplyr::rename(mean = rate)
 
+  if("sex" %in% colnames(rates_df)){
+    rates_df <- rates_df |>
+      dplyr::mutate(sex = stringr::str_to_title(sex))
+  }
+
   if (rate_overide > 0) {
     rates_df <- rates_df %>%
       dplyr::mutate(mean = rate_overide)
   }
-
-  print(unique(rates_df$region))
 
   sysmod <- purrr::map(
     unique(rates_df$region),
@@ -233,6 +238,26 @@ create_data_model <- function(dm_name, series_name, dm_type, counts_df,
                               disp = NULL, scale_ratio = 0, ratio = 1,
                               sd_scaler = 1, sd_overide = -1, min_sd = 0,
                               count_scaler = 1) {
+  if("sex" %in% colnames(counts_df)){
+    counts_df <- counts_df |>
+      dplyr::mutate(sex = stringr::str_to_title(sex))
+  }
+
+  if("sex" %in% colnames(uncertainty_df)){
+    uncertainty_df <- uncertainty_df |>
+      dplyr::mutate(sex = stringr::str_to_title(sex))
+  }
+
+  if(!is.null(counts_df) & !is.null(uncertainty_df)){
+    joining_cols <- intersect(c("age","time","sex","region"),
+                              colnames(counts_df))
+    counts_df <- dplyr::semi_join(counts_df,
+                                  uncertainty_df,
+                                  by = joining_cols)
+    uncertainty_df <- dplyr::semi_join(uncertainty_df,
+                                       counts_df,
+                                       by = joining_cols)
+  }
   # Default null time select is all available time
   if (is.null(time_select)) {
     time_select <- unique(counts_df$time)

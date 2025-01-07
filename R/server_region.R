@@ -28,6 +28,10 @@
 #' @import DT
 #' @import accountTMB
 server_region <- function(input, output, session) {
+  # We set up a future plan, for paralell processing
+  #future::plan(strategy = future::multisession(workers = future::availableCores() - 4))
+  # Trying callr
+  future::plan(strategy = future.callr::callr(workers = future::availableCores() - 4))
   # Define the global reactive lists which the dashboard relies on
   datamod_list <- reactiveVal(list()) # All defined data models
   global_config <- reactiveVal(list()) # User-defined global config
@@ -163,7 +167,8 @@ server_region <- function(input, output, session) {
 
     output$modelPlots <- shiny::renderUI({
       lapply(models, function(model) {
-        sysmod <- sysmod_list()[[model]]
+        # System models that need to be subsetted by region
+        sysmod <- sysmod_list()[[model]][[1]]
         if (!is.null(sysmod)) {
           plotly::plotlyOutput(outputId = paste0(model, "_plot"))
         }
@@ -172,7 +177,7 @@ server_region <- function(input, output, session) {
 
     lapply(models, function(model) {
       output[[paste0(model, "_summary")]] <- renderPrint({
-        sysmod <- sysmod_list()[[model]]
+        sysmod <- sysmod_list()[[model]][[1]]
         if (!is.null(sysmod)) {
           cat("Summary of rates data for", model, "\n")
           generate_summary(as.data.frame(sysmod$mean) %>% dplyr::rename(rate = .data$mean))
@@ -180,7 +185,7 @@ server_region <- function(input, output, session) {
       })
 
       output[[paste0(model, "_plot")]] <- plotly::renderPlotly({
-        sysmod <- sysmod_list()[[model]]
+        sysmod <- sysmod_list()[[model]][[1]]
         if (!is.null(sysmod)) {
           generate_plots(as.data.frame(sysmod$mean) %>% dplyr::rename(rate = .data$mean), model)
         }
@@ -788,16 +793,27 @@ server_region <- function(input, output, session) {
 
     models <- c("births", "deaths", "ins", "outs")
 
-    result <- purrr::map(
-      global_config()$region_selection,
-      \(region){
-        accountTMB::estimate_account(datamods = purrr::map(filtered_data_models(), purrr::pluck, region),
-                                     sysmods = purrr::map(filtered_system_models(), purrr::pluck, region),
-                                     seed_in = global_config()$seed_value)
-      }
-    )
+    #TODO: Come up with better var names
+    dm <- filtered_data_models()
+    sm <- filtered_system_models()
+    run_config <- global_config()
 
-    output_file <- file.path(global_config()$output_dir, "fit_model_result.RDS")
+    result <- furrr::future_map(
+      run_config$region_selection,
+      \(region){
+        accountTMB::estimate_account(datamods = purrr::map(dm, purrr::pluck, region),
+                                     sysmods = purrr::map(sm, purrr::pluck, region),
+                                     seed_in = run_config$seed_value)
+      },
+      .progress = TRUE,
+      .options = furrr::furrr_options(globals = c("dm", "sm", "run_config"),
+                                      seed = run_config$seed_value)
+    ) |>
+      purrr::set_names(
+        run_config$region_selection
+      )
+
+    output_file <- file.path(run_config$output_dir, "fit_model_result.RDS")
     print("Saving model")
     saveRDS(result, output_file)
 
@@ -808,23 +824,38 @@ server_region <- function(input, output, session) {
       footer = NULL
     ))
 
-    diag <- result %>% accountTMB::diagnostics()
-    cohort_passes <- nrow(diag %>% dplyr::filter(.data$success == TRUE))
-    cohort_total <- nrow(diag)
+    res_diag <- purrr::map(result,
+                       accountTMB::diagnostics) |>
+      purrr::set_names(names(result))
+
+    cohort_passes <- purrr::map(
+      res_diag,
+      \(x) x |> dplyr::filter(success == TRUE) |> nrow()) |>
+      purrr::set_names(names(diag))
+
+    cohort_total <- purrr::map(res_diag, nrow) |> purrr::set_names(names(diag))
 
     output$cohortResults <- renderText({
-      paste0(cohort_passes, " out of ", cohort_total, " cohorts fitted.")
+      paste0(cohort_passes[[1]], " out of ", cohort_total[[1]], " cohorts fitted.")
     })
 
     output$cohortDiagnostics <- DT::renderDT({
-      DT::datatable(diag %>% dplyr::filter(.data$success == FALSE))
+      DT::datatable(res_diag[[1]] %>% dplyr::filter(success == FALSE))
     })
 
-    pop_res <- result %>% accountTMB::augment_population(collapse = "cohort")
-    mig_res <- result %>%
+    print("Augmenting population and Migration")
+    pop_res <- purrr::map(
+      result,
+      \(x) accountTMB::augment_population(x, collapse = "cohort"),
+      .progress = TRUE)
+
+    mig_res <- purrr::map(
+      result,
+      \(x){x %>%
       accountTMB::augment_events(collapse = "age") %>%
-      dplyr::mutate(age = .data$time - .data$cohort) %>%
-      dplyr::select(-.data$cohort)
+      dplyr::mutate(age = time - cohort) %>%
+      dplyr::select(-cohort)},
+      .progress = TRUE)
 
     showModal(modalDialog(
       title = "Population estimated",
@@ -833,8 +864,9 @@ server_region <- function(input, output, session) {
       footer = NULL
     ))
 
-    pop_res_sub <- shiny::reactive(pop_res %>% dplyr::select(-c("population")))
-    mig_res_sub <- shiny::reactive(mig_res %>% dplyr::select(-c("ins", "outs")))
+    # TODO: make these dependent on the input of region selection
+    pop_res_sub <- shiny::reactive(pop_res[[1]] %>% dplyr::select(-c("population")))
+    mig_res_sub <- shiny::reactive(mig_res[[1]] %>% dplyr::select(-c("ins", "outs")))
 
     output_file <- file.path(global_config()$output_dir, "population_estimates.csv")
     utils::write.csv(pop_res_sub(), output_file, row.names = FALSE)
@@ -1108,12 +1140,29 @@ server_region <- function(input, output, session) {
 
     models <- c("births", "deaths", "ins", "outs")
 
-    result_1 <- accountTMB::estimate_account(datamods = filtered_data_models_1(),
-                                             sysmods = filtered_sys_models_1(),
-                                             seed_in = global_config()$seed_value)
-    result_2 <- accountTMB::estimate_account(datamods = filtered_data_models_2(),
-                                             sysmods = filtered_sys_models_2(),
-                                             seed_in = global_config()$seed_value)
+    result_1 <- purrr::map(
+      global_config()$region_selection,
+      \(region){
+        accountTMB::estimate_account(datamods = purrr::map(filtered_data_models_1(), purrr::pluck, region),
+                                     sysmods = purrr::map(filtered_sys_models_1(), purrr::pluck, region),
+                                     seed_in = global_config()$seed_value)
+      }
+    ) |>
+      purrr::set_names(
+        global_config()$region_selection
+      )
+
+    result_2 <- purrr::map(
+      global_config()$region_selection,
+      \(region){
+        accountTMB::estimate_account(datamods = purrr::map(filtered_data_models_2(), purrr::pluck, region),
+                                     sysmods = purrr::map(filtered_sys_models_2(), purrr::pluck, region),
+                                     seed_in = global_config()$seed_value)
+      }
+    ) |>
+      purrr::set_names(
+        global_config()$region_selection
+      )
 
     showModal(modalDialog(
       title = "Model fitted",
