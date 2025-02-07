@@ -252,6 +252,12 @@ ui_region <- shinydashboard::dashboardPage(
           )
         ),
         shiny::fluidRow(
+          shiny::selectInput("region_preview",
+                             label = 'Region to preview',
+                             choices = c("Generate Model")
+                             )
+        ),
+        shiny::fluidRow(
           shinydashboard::box(
             title = "Cohort Results", solidHeader = TRUE, status = "primary",
             column(
@@ -268,24 +274,20 @@ ui_region <- shinydashboard::dashboardPage(
           )
         ),
         shiny::fluidRow(
-          shinydashboard::box(
-            title = "Model summary", width = 12, solidHeader = TRUE, status = "primary",
-            DT::DTOutput("population_table"),
-            DT::DTOutput("migration_table")
-          )
-        ),
-        shiny::fluidRow(
           shiny::column(width = 2, actionButton("goDM", "Back"), icon = icon("arrow-left")),
           shiny::column(width = 2, actionButton("goPE", "Continue"), icon = icon("arrow-right")),
         )
       ),
       shinydashboard::tabItem("Population Estimates",
                               tabName = "popEstimates",
+                              shiny::fluidRow(shiny::actionButton("augment_pop", "Generate population estimates")),
                               shiny::fluidRow(
                                 shiny::column(4, selectInput("time_select_pop", "Time", choices = NULL)),
                                 shiny::column(4, selectInput("sex_select_pop", "Sex", choices = c("Female", "Male"))),
                                 shiny::column(4, textInput("compare_select_pop", "Compare Column"))
                               ),
+                              DT::DTOutput("example_pop_dt"),
+                              DT::DTOutput("population_table"),
                               uiOutput("popPlots"),
                               shiny::fluidRow(
                                 shiny::column(width = 2, actionButton("goFM", "Back"), icon = icon("arrow-left")),
@@ -294,8 +296,10 @@ ui_region <- shinydashboard::dashboardPage(
       ),
       shinydashboard::tabItem("Migration Estimates",
                               tabName = "migEstimates",
+                              shiny::fluidRow(shiny::actionButton("augment_mig", "Generate migration estimates")),
                               shiny::fluidRow(
                                 shiny::column(4, selectInput("time_select_mig", "Time", choices = NULL)),
+                                DT::DTOutput("migration_table"),
                                 shiny::column(4, selectInput("sex_select_mig", "Sex", choices = c("Female", "Male"))),
                                 shiny::column(4, textInput("compare_select_ins", "Compare Ins")),
                                 shiny::column(4, textInput("compare_select_outs", "Compare Outs"))
@@ -327,12 +331,19 @@ ui_region <- shinydashboard::dashboardPage(
           shinydashboard::box(
             title = "Setup (2) Data Models", width = 6, solidHeader = TRUE, status = "primary",
             shiny::uiOutput("data_model_checklist_2")
+          ),
+          #TODO: ADD in a region selector here
+          shinydashboard::box(
+            title = "Region Selection", width = 6, solidHeader = TRUE, status = "primary",
+            shinyWidgets::pickerInput("output_region_selection", choices = c())
           )
         ),
         shiny::fluidRow(
           shinydashboard::box(
             width = 12, solidHeader = TRUE, status = "primary",
-            shiny::actionButton("compare_account_model", "Compare Models")
+            shiny::actionButton("compare_account_model",
+                                label = "Compare Models",
+                                choices = c())
           )
         ),
         shiny::fluidRow(
