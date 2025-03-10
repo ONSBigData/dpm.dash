@@ -848,26 +848,29 @@ server_region <- function(input, output, session) {
 
   output$cohortResults <- renderText({
     req(fit_model())
-    print(paste0(
-      "Showing cohort results for region: ",
-      input$region_preview
-    ))
+
     cohort_passes <- purrr::map(
       res_diag(),
       \(x) x |>
         dplyr::filter(success == TRUE) |>
-        nrow())
+        nrow()) |>
+      unlist() |>
+      sum()
 
-    cohort_total <- purrr::map(res_diag(), nrow)
+    cohort_total <- purrr::map(res_diag(), nrow) |>
+      unlist() |>
+      sum()
+
+
     paste0(
-      cohort_passes[[input$region_preview]],
+      cohort_passes,
            " out of ",
-      cohort_total[[input$region_preview]],
+      cohort_total,
       " cohorts fitted.")
   })
 
   pop_res <- reactive({
-    purrr::map(
+    furrr::future_map(
       fit_model(),
       \(x) accountTMB::augment_population(x, collapse = "cohort"),
       .progress = TRUE)
@@ -882,20 +885,16 @@ server_region <- function(input, output, session) {
   }) |>
     shiny::bindEvent(input$augment_mig)
 
-  output$example_pop_dt <- DT::renderDT(
-    {
-      pop_res()[[1]]
-    }
-  )
-
-  output$popPlots <- shiny::renderUI({
-    plotly::plotlyOutput(outputId = "population_estimates")
-  })
+  shiny::observe({
+    dates <- unique(pop_res()$time)
+    latest_date <- max(dates)
+    shiny::updateSelectInput(session, "time_select_pop",
+                             choices = dates,
+                             selected = latest_date)
+  }) |>
+    shiny::bindEvent(pop_res)
 
   output$population_estimates <- renderPlotly({
-    req(input$time_select_pop,
-        input$sex_select_pop)
-
     if (nzchar(input$compare_select_pop) & (input$compare_select_pop %in% colnames(pop_res()))) {
       p <- ggplot2::ggplot(
         pop_res() %>%
