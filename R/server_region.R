@@ -870,10 +870,18 @@ server_region <- function(input, output, session) {
   })
 
   pop_res <- reactive({
-    furrr::future_map(
+    pop_res <- purrr::map(
       fit_model(),
-      \(x) accountTMB::augment_population(x, collapse = "cohort"),
-      .progress = TRUE)
+      \(x) accountTMB::augment_population(x, collapse = "cohort") |> dplyr::select(-population),
+      .progress = TRUE) |>
+      dplyr::bind_rows(.id = "region")
+
+    print("generated pop ests")
+    output_file <- file.path(global_config()$output_dir, "population_estimates.csv")
+
+    utils::write.csv(pop_res, output_file, row.names = FALSE)
+
+    pop_res
   }) |>
     shiny::bindEvent(input$augment_pop)
 
@@ -925,14 +933,14 @@ server_region <- function(input, output, session) {
       p <- ggplot2::ggplot(
         pop_res() %>%
           dplyr::filter(
-            time == input$time_select_pop,
             sex == input$sex_select_pop
           ),
         ggplot2::aes(
           x = age,
           ymin = population.lower,
           y = population.fitted,
-          ymax = population.upper
+          ymax = population.upper,
+          color = time
         )
       ) +
         ggplot2::geom_pointrange(
