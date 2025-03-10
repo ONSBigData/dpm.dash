@@ -39,6 +39,10 @@ ui_region <- shinydashboard::dashboardPage(
                                shinydashboard::menuSubItem("Fit Models", tabName = "fitModels", icon = icon("sliders-h")),
                                shinydashboard::menuSubItem("Compare Population Estimates", tabName = "compPopEstimates", icon = icon("people-roof")),
                                shinydashboard::menuSubItem("Compare Migration Estimates", tabName = "compMigEstimates", icon = icon("plane"))
+      ),
+      shiny::selectInput("region_preview",
+                         label = 'Region to preview',
+                         choices = NULL
       )
     )
   ),
@@ -252,12 +256,6 @@ ui_region <- shinydashboard::dashboardPage(
           )
         ),
         shiny::fluidRow(
-          shiny::selectInput("region_preview",
-                             label = 'Region to preview',
-                             choices = c("Generate Model")
-                             )
-        ),
-        shiny::fluidRow(
           shinydashboard::box(
             title = "Cohort Results", solidHeader = TRUE, status = "primary",
             column(
@@ -288,7 +286,7 @@ ui_region <- shinydashboard::dashboardPage(
                               ),
                               DT::DTOutput("example_pop_dt"),
                               DT::DTOutput("population_table"),
-                              uiOutput("popPlots"),
+                              plotly::plotlyOutput("population_estimates"),
                               shiny::fluidRow(
                                 shiny::column(width = 2, actionButton("goFM", "Back"), icon = icon("arrow-left")),
                                 shiny::column(width = 2, actionButton("goME", "Continue"), icon = icon("arrow-right")),
