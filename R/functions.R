@@ -24,8 +24,17 @@ create_data_model_region <- function(
     aux_data,
     unique_region){
 
+  # TODO: May be good to have a function which wraps around all auxillary
+  # data and handles the unique region aspect, or in general write a better
+  # data model region function.
   if(!is.null(aux_data$uncertainty)){
     aux_data$uncertainty <- aux_data$uncertainty |>
+      dplyr::filter(region == unique_region) |>
+      dplyr::select(-region)
+  }
+
+  if(!is.null(aux_data$ratio)){
+    aux_data$ratio <- aux_data$ratio |>
       dplyr::filter(region == unique_region) |>
       dplyr::select(-region)
   }
@@ -33,6 +42,9 @@ create_data_model_region <- function(
   counts_df <- counts_df |>
     dplyr::filter(region == unique_region) |>
     dplyr::select(-region)
+
+  # TODO: Add check on auxilary data, if it's a dataframe split the object
+  # and then remove the region column. Could even wrap it into a function
 
   create_data_model(
     dm_name = dm_name,
@@ -166,13 +178,27 @@ create_system_model_region <- function(model_name,
       dplyr::mutate(mean = rate_overide)
   }
 
+  # do a check to see if disp is a dataframe
+  if("region" %in% colnames(disp) & is.data.frame(disp)){
+    # If it's a dataframe, split it
+    disp <- split(disp, disp$region)
+    # Once split, check if it's a dataframe of one row dataframes
+    # TODO: I think this method could be done better? Works for now
+    if(all(lapply(disp, nrow) == 1)){
+      disp <- purrr::map(disp, \(x) dplyr::pull(x, disp))
+    } else {
+      disp <- purrr::map(disp, \(x) dplyr::select(x, -region))
+    }
+  }
+
   sysmod <- purrr::map(
     unique(rates_df$region),
     \(unique_region) dplyr::filter(rates_df, region == unique_region) |>
       tibble::as_tibble() |>
       dplyr::select(-region) |>
       accountTMB::sysmod(
-        disp = disp,
+        # TODO: Could have a better way to set disp here?
+        disp = if(is.double(disp)) disp else disp[[unique_region]],
         nm_series = model_name
       )
   ) |>
@@ -359,4 +385,46 @@ create_data_model <- function(dm_name, series_name, dm_type, counts_df,
     )
   }
   return(datamod)
+}
+
+#' Check if the first line of a csv is the same as a specified vector
+#'
+#' @param filepath string, path to file
+#' @param comparison_string_vector list of strings to compare to
+#' @param delimiter text delimeter to split headers by
+check_headers <- function(filepath,
+                          comparison_string_vector,
+                          delimiter = ','){
+  print(filepath)
+  assertthat::assert_that(is.character(comparison_string_vector),
+                         assertthat::is.readable(filepath))
+
+  headers <- readLines(filepath, n = 1) |>
+    strsplit(delimiter) |>
+    unlist()
+
+
+  assertthat::assert_that(all(headers %in% comparison_string_vector))
+}
+
+#' Send an r object to an API via a post request and decode the r object response
+#' @param object object to encode
+#' @param endpoint API endpoint to send request to
+#'
+#' @returns API response
+send_object_to_API <- function(object, endpoint){
+  enc_stream < -rawConnection(raw(), "r+")
+  saveRDS(object, enc_stream)
+  seek(enc_stream, 0)
+  resbin <- httr::POST(
+    endpoint,
+    body = base64enc::base64encode(enc_stream))$content(as = 'text')
+  close(enc_stream)
+
+  dec_stream <- rawConnection(resbin, "r")
+
+  out <- readRDS(dec_stream)
+  close(dec_stream)
+  return(out)
+
 }
