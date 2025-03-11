@@ -869,6 +869,16 @@ server_region <- function(input, output, session) {
       " cohorts fitted.")
   })
 
+  output$cohortDiagnostics <- DT::renderDT({
+    req(fit_model())
+
+    purrr::map(res_diag(),
+               \(region_diag) region_diag |>
+                  dplyr::filter(success == FALSE)) |>
+      dplyr::bind_rows(.id = "Region") |>
+      DT::datatable()
+  })
+
   pop_res <- reactive({
     pop_res <- purrr::map(
       fit_model(),

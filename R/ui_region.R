@@ -257,18 +257,9 @@ ui_region <- shinydashboard::dashboardPage(
         ),
         shiny::fluidRow(
           shinydashboard::box(
-            title = "Cohort Results", solidHeader = TRUE, status = "primary",
-            column(
-              width = 6,
-              shiny::textOutput("cohortResults")
-            )
-          ),
-          shinydashboard::box(
-            title = "Cohort Failures", solidHeader = TRUE, status = "primary",
-            column(
-              width = 6,
+            title = "Cohort Results", solidHeader = TRUE, status = "primary",width = 12,
+              shiny::textOutput("cohortResults"),
               DT::DTOutput("cohortDiagnostics")
-            )
           )
         ),
         shiny::fluidRow(
