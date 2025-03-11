@@ -33,7 +33,7 @@ create_data_model_region <- function(
       dplyr::select(-region)
   }
 
-  if(!is.null(aux_data$ratio)){
+  if(!is.null(aux_data$ratio) & is.data.frame(aux_data$ratio)){
     aux_data$ratio <- aux_data$ratio |>
       dplyr::filter(region == unique_region) |>
       dplyr::select(-region)
