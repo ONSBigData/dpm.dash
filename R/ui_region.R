@@ -108,33 +108,10 @@ ui_region <- shinydashboard::dashboardPage(
               ),
               "Exporting the system models setup will save a .RDS file of the format <setup_name>_sysmods.RDS in the provided Input Data Directory (global config), which can be used to quickly import a previous setup."
             ),
+            #TODO: potentially change this to it's own shinymodule?
+            # would help in aligning the server and ui functions
             lapply(c("births", "deaths", "ins", "outs"), function(model) {
-              shinydashboard::box(
-                title = paste(model, "System Model"), width = 6, status = "primary",
-                fluidRow(
-                  shinydashboard::box(
-                    title = "Required", width = 12,
-                    shiny::textInput(paste0(model, "_rates_file"), paste(model, "Rates CSV Filename"), value = paste0("sm_", model, ".csv")),
-                    shiny::radioButtons(paste0(model, "_disp_type"), "Dispersion Input Type", choices = c("Single Value", "CSV File")),
-                    shiny::conditionalPanel(
-                      condition = sprintf("input.%s_disp_type == 'Single Value'", model),
-                      numericInput(paste0(model, "_disp_value"), paste(model, "Dispersion Value"), value = 0.05)
-                    ),
-                    shiny::conditionalPanel(
-                      condition = sprintf("input.%s_disp_type == 'CSV File'", model),
-                      shiny::textInput(paste0(model, "_disp_file"), paste(model, "Dispersion CSV Filename"))
-                    )
-                  )
-                ),
-                fluidRow(
-                  shinydashboard::box(
-                    title = "Optional", width = 12, collapsible = TRUE, collapsed = TRUE,
-                    numericInput(paste0(model, "_lower_rate_limit"), paste("Optional: ", model, " Lower Rate Limit"), value = 1e-6),
-                    sliderInput(paste0(model, "_rate_scale"), paste("Optional: ", model, " Rate Scaler"), value = 1, min = 0, max = 3, step = 0.1),
-                    numericInput(paste0(model, "_rate_overide"), paste("Optional: ", model, " Rate Set"), value = -1)
-                  )
-                )
-              )
+              mod_system_models_ui(id = model, sys_mod_type = model)
             }),
             shiny::textInput("sysmods_name", "System Models Setup Name:", value = "default"),
             shiny::actionButton("create_system_models", "Create System Models"),

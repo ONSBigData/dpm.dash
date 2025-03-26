@@ -39,7 +39,7 @@ server_region <- function(input, output, session) {
   sysmod_list_list <- reactiveVal(list())
   selected_data_models <- reactiveVal(list())
 
-  r <- reactiveValues()
+  r <- reactiveValues(create_system_models = 0)
 
   ## globalConfig Tab
   # Defaults for global_config
@@ -47,6 +47,15 @@ server_region <- function(input, output, session) {
   default_data_dir <- here::here("data/") # Default data_dir in package
   default_seed_value <- numbers::nextPrime(as.integer(Sys.time())) # Generate a random prime number as the default seed value
 
+  # Load modules
+  # TODO: currently hybrid approach, change so that all content is loaded and
+  # handled in shiny modules
+  lapply(c("births","deaths","ins","outs"),
+         \(model) mod_system_models_server(model,
+                                           r,
+                                           sys_mod_type = model,
+                                           global_config = global_config,
+                                           create_sys_models_button = input$create_system_models))
 
   # Observe global config save button press
   shiny::observeEvent(input$save_global_config, {
@@ -73,33 +82,40 @@ server_region <- function(input, output, session) {
     ))
   })
 
+  # TODO: This observer makes the observer in mod_system_models work.
+  # I have some idea why, although the below is
+  # just forcing reactivity at this point.
+  observe({
+    r$create_system_models <- r$create_system_models + 1
+  }) |>
+    bindEvent(input$create_system_models)
+
   ## systemModels Tab
   # Observe event for creating the system models (all 4 at once)
-  shiny::observeEvent(input$create_system_models, {
-    file_error <- FALSE # Flag to track file errors
+  shiny::observeEvent(r[["create_system_models"]], {
+
+    if (!all(as.logical(r$sys_mod_files_exist))) {
+      # Display a warning if any file errors occurred
+      shinyWidgets::sendSweetAlert(
+        session = session,
+        title = "File Error",
+        text = "One or more files specified for the system models do not exist. Please check your file paths and try again.",
+        type = "error"
+      )
+    }
     req(global_config()$data_dir)
+    req(all(as.logical(r$sys_mod_files_exist)))
     models <- c("births", "deaths", "ins", "outs")
     new_sysmods <- lapply(models, function(model) {
-      rates_file <- file.path(global_config()$data_dir, input[[paste0(model, "_rates_file")]])
-      print(rates_file)
-
-      if (!file.exists(rates_file)) {
-        print("hit the error")
-        file_error <<- TRUE # Set error flag to TRUE
-        shiny::validate(shiny::need(!file_error, message = 'File not found'))
-        return(NULL) # Return NULL if file not found
-      }
-
+      rates_file <- r[["sysmods"]][[model]][["rates_file"]]
       rates_df <- utils::read.csv(rates_file)
 
-      if (input[[paste0(model, "_disp_type")]] == "Single Value") {
-        disp <- input[[paste0(model, "_disp_value")]]
+      if (r[["sysmods"]][[model]][["disp_type"]] == "Single Value") {
+        print("using single disp value")
+        disp <- r[["sysmods"]][[model]][["disp_value"]]
       } else {
-        disp_file <- file.path(global_config()$data_dir, input[[paste0(model, "_disp_file")]])
-        if (!file.exists(disp_file)) {
-          file_error <<- TRUE
-          return(NULL)
-        }
+        print("using csv disp")
+        disp_file <- file.path(global_config()$data_dir, r[["sysmods"]][[model]][["disp_file"]])
         disp <- utils::read.csv(disp_file)
       }
 
@@ -123,16 +139,11 @@ server_region <- function(input, output, session) {
                                   rate_overide)
     })
 
-    if (file_error) { # Display a warning if any file errors occurred
-      shinyWidgets::sendSweetAlert(
-        session = session,
-        title = "File Error",
-        text = "One or more files specified for the system models do not exist. Please check your file paths and try again.",
-        type = "error"
-      )
-    }
+
 
     names(new_sysmods) <- models # Ensure the new models are named correctly
+    # Update the region preview
+    updateSelectInput(session, "region_preview", choices = names(new_sysmods[[1]]))
     sysmod_list(c(new_sysmods))
 
     currentList <- sysmod_list_list()
@@ -182,7 +193,7 @@ server_region <- function(input, output, session) {
 
     lapply(models, function(model) {
       output[[paste0(model, "_summary")]] <- renderPrint({
-        sysmod <- sysmod_list()[[model]][[1]]
+        sysmod <- sysmod_list()[[model]][[input$region_preview]]
         if (!is.null(sysmod)) {
           cat("Summary of rates data for", model, "\n")
           generate_summary(as.data.frame(sysmod$mean) %>% dplyr::rename(rate = .data$mean))
@@ -190,7 +201,7 @@ server_region <- function(input, output, session) {
       })
 
       output[[paste0(model, "_plot")]] <- plotly::renderPlotly({
-        sysmod <- sysmod_list()[[model]][[1]]
+        sysmod <- sysmod_list()[[model]][[input$region_preview]]
         if (!is.null(sysmod)) {
           generate_plots(as.data.frame(sysmod$mean) %>% dplyr::rename(rate = .data$mean), model)
         }
@@ -237,23 +248,15 @@ server_region <- function(input, output, session) {
     req(global_config()$data_dir)
     models <- c("births", "deaths", "ins", "outs")
     new_sysmods <- lapply(models, function(model) {
-      rates_file <- file.path(global_config()$data_dir, input[[paste0(model, "_rates_file")]])
-
-      if (!file.exists(rates_file)) {
-        file_error <<- TRUE # Set error flag to TRUE
-        return(NULL) # Return NULL if file not found
-      }
-
+      rates_file <- r[["sysmods"]][[model]][["rates_file"]]
       rates_df <- utils::read.csv(rates_file)
 
-      if (input[[paste0(model, "_disp_type")]] == "Single Value") {
-        disp <- input[[paste0(model, "_disp_value")]]
+      if (r[["sysmods"]][[model]][["disp_type"]] == "Single Value") {
+        print("using single disp value")
+        disp <- r[["sysmods"]][[model]][["disp_value"]]
       } else {
-        disp_file <- file.path(global_config()$data_dir, input[[paste0(model, "_disp_file")]])
-        if (!file.exists(disp_file)) {
-          file_error <<- TRUE
-          return(NULL)
-        }
+        print("using csv disp")
+        disp_file <- file.path(global_config()$data_dir, r[["sysmods"]][[model]][["disp_file"]])
         disp <- utils::read.csv(disp_file)
       }
 
@@ -266,19 +269,16 @@ server_region <- function(input, output, session) {
       time_selection <- global_config()$time_selection
 
       # Again here, create it for system model region
-      create_system_model_region(model, rates_df, disp, time_selection, lower_rates_limit, rate_scaler, rate_overide)
-
+      create_system_model_region(model,
+                                 rates_df,
+                                 disp,
+                                 global_config()$region_selection,
+                                 time_selection,
+                                 lower_rates_limit,
+                                 rate_scaler,
+                                 rate_overide)
       #create_system_model(model, rates_df, disp, time_selection, lower_rates_limit, rate_scaler, rate_overide)
     })
-
-    if (file_error) { # Display a warning if any file errors occurred
-      shinyWidgets::sendSweetAlert(
-        session = session,
-        title = "File Error",
-        text = "One or more files specified for the system models do not exist. Please check your file paths and try again.",
-        type = "error"
-      )
-    }
 
     names(new_sysmods) <- models # Ensure the new models are named correctly
     saveRDS(c(new_sysmods), paste0(global_config()$data_dir, "/", input$sysmods_name, "_sysmods.RDS"))
@@ -886,6 +886,13 @@ server_region <- function(input, output, session) {
       .progress = TRUE) |>
       dplyr::bind_rows(.id = "region")
 
+    years <- pop_res |>
+      dplyr::arrange(time) |>
+      dplyr::pull(time) |>
+      unique()
+
+    updateSelectInput(session, "time_select_pop", choices = years)
+
     print("generated pop ests")
     output_file <- file.path(global_config()$output_dir, "population_estimates.csv")
 
@@ -918,7 +925,8 @@ server_region <- function(input, output, session) {
         pop_res() %>%
           dplyr::filter(
             time == input$time_select_pop,
-            sex == input$sex_select_pop
+            sex == input$sex_select_pop,
+            region = input$region_preview
           ),
         ggplot2::aes(
           x = age,
@@ -943,7 +951,9 @@ server_region <- function(input, output, session) {
       p <- ggplot2::ggplot(
         pop_res() %>%
           dplyr::filter(
-            sex == input$sex_select_pop
+            sex == input$sex_select_pop,
+            time == input$time_select_pop,
+            region == input$region_preview
           ),
         ggplot2::aes(
           x = age,
