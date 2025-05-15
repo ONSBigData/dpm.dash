@@ -7,6 +7,6 @@
 # * https://testthat.r-lib.org/articles/special-files.html
 
 library(testthat)
-library(dpm.dashboard)
+library(dpm.dash)
 
-test_check("dpm.dashboard")
+test_check("dpm.dash")

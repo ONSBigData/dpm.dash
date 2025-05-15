@@ -21,7 +21,7 @@ ui_dev <- shinydashboard::dashboardPage(
   shinydashboard::dashboardSidebar(
     shinydashboard::sidebarMenu(
       id = "tabs",
-      shinydashboard::menuItem("Introdution", tabName = "introDoc", icon = icon("book")),
+      shinydashboard::menuItem("Introduction", tabName = "introDoc", icon = icon("book")),
       shinydashboard::menuItem("Global Configuration", tabName = "globalConfig", icon = icon("cog")),
       shinydashboard::menuItem("DPM Specification",
         tabName = "dpmSpec", icon = icon("cogs"), startExpanded = FALSE,
@@ -57,7 +57,7 @@ ui_dev <- shinydashboard::dashboardPage(
               "Please provide the following global configuration parameters:",
               shiny::tags$ul(
                 shiny::tags$li("Input Data Directory : Defaults to the /data directory for dummy data, set to location of any data used for system/data models."),
-                shiny::tags$li("Output Directory : Defaults to the /output directory, set to location to save results.RDS file/.csv file from ‘Fit Model’ tab."),
+                shiny::tags$li("Output Directory : Defaults to the /output directory, set to location to save results.RDS file/.csv file from 'Fit Model' tab."),
                 shiny::tags$li("Time Selection : Defaults to empty (all), optional parameter to subset all data to for testing (comma separated years)."),
                 shiny::tags$li("Seed Value : Defaults to a random prime number, can be used for reproducibility.")
               )
@@ -126,7 +126,8 @@ ui_dev <- shinydashboard::dashboardPage(
                     title = "Optional", width = 12, collapsible = TRUE, collapsed = TRUE,
                     numericInput(paste0(model, "_lower_rate_limit"), paste("Optional: ", model, " Lower Rate Limit"), value = 1e-6),
                     sliderInput(paste0(model, "_rate_scale"), paste("Optional: ", model, " Rate Scaler"), value = 1, min = 0, max = 3, step = 0.1),
-                    numericInput(paste0(model, "_rate_overide"), paste("Optional: ", model, " Rate Set"), value = -1)
+                    numericInput(paste0(model, "_rate_overide"), paste("Optional: ", model, " Rate Set"), value = -1),
+                    numericInput(paste0(model, "_rate_noise"), paste("Optional: ", model, " Noise Set"), value = 0)
                   )
                 )
               )
@@ -228,6 +229,36 @@ ui_dev <- shinydashboard::dashboardPage(
           )
         ),
         shiny::fluidRow(
+          shinydashboard::box(
+            title = "Plot Data Model Data", width = 12, solidHeader = TRUE, status = "primary",
+            shiny::uiOutput("dmModelPlots"),
+            shiny::selectInput("plot_data_model", "Select Data Model to Plot", choices = NULL),
+            shiny::actionButton("plotdm_button", "Plot Selected Data Model")
+          )
+        ),
+        # shiny::fluidRow(
+        #   shinydashboard::box(
+        #     title = "Inspect Data Model Data", width = 12, solidHeader = TRUE, status = "primary",
+        #     DT::DTOutput("dmModelInspect"),
+        #     shiny::selectInput("inspect_data_model", "Select Data Model to Inspect", choices = NULL),
+        #     shiny::actionButton("inspectdm_button", "Inspect Selected Data Model")
+        #   )
+        # ),
+        shiny::fluidRow(
+          shinydashboard::box(
+            title = "Inspect Data Model Data (1)", width = 6, solidHeader = TRUE, status = "primary",
+            DT::DTOutput("dmModelInspect1"),
+            shiny::selectInput("inspect_data_model1", "Select Data Model to Inspect", choices = NULL),
+            shiny::actionButton("inspectdm_button1", "Inspect Selected Data Model")
+          ),
+          shinydashboard::box(
+            title = "Inspect Data Model Data (2)", width = 6, solidHeader = TRUE, status = "primary",
+            DT::DTOutput("dmModelInspect2"),
+            shiny::selectInput("inspect_data_model2", "Select Data Model to Inspect", choices = NULL),
+            shiny::actionButton("inspectdm_button2", "Inspect Selected Data Model")
+          )
+        ),
+        shiny::fluidRow(
           shiny::column(width = 2, actionButton("goSM", "Back"), icon = icon("arrow-left")),
           shiny::column(width = 2, actionButton("goFM", "Continue"), icon = icon("arrow-right")),
         )
@@ -282,7 +313,6 @@ ui_dev <- shinydashboard::dashboardPage(
         tabName = "popEstimates",
         shiny::fluidRow(
           shiny::column(4, selectInput("time_select_pop", "Time", choices = NULL)),
-          shiny::column(4, selectInput("sex_select_pop", "Sex", choices = c("Female", "Male"))),
           shiny::column(4, textInput("compare_select_pop", "Compare Column"))
         ),
         uiOutput("popPlots"),
@@ -295,7 +325,6 @@ ui_dev <- shinydashboard::dashboardPage(
         tabName = "migEstimates",
         shiny::fluidRow(
           shiny::column(4, selectInput("time_select_mig", "Time", choices = NULL)),
-          shiny::column(4, selectInput("sex_select_mig", "Sex", choices = c("Female", "Male"))),
           shiny::column(4, textInput("compare_select_ins", "Compare Ins")),
           shiny::column(4, textInput("compare_select_outs", "Compare Outs"))
         ),
@@ -340,7 +369,11 @@ ui_dev <- shinydashboard::dashboardPage(
             shiny::uiOutput("compAggPop"),
             shiny::uiOutput("compAggImmig"),
             shiny::uiOutput("compAggEmig"),
-            shiny::uiOutput("compAggNetMig")
+            shiny::uiOutput("compAggNetMig"),
+            shiny::uiOutput("compAggPopDiffs"),
+            shiny::uiOutput("compAggImmigDiffs"),
+            shiny::uiOutput("compAggEmigDiffs")#,
+            # shiny::uiOutput("compAggNetMigDiffs")
           )
         )
       ),
@@ -348,8 +381,8 @@ ui_dev <- shinydashboard::dashboardPage(
         tabName = "compPopEstimates",
         shiny::fluidRow(
           shiny::column(4, selectInput("time_select_comp", "Time", choices = NULL)),
-          shiny::column(4, selectInput("sex_select_comp", "Sex", choices = c("Female", "Male"))),
-          shiny::column(4, selectInput("setup_select", "Setup", choices = c("Both", "Setup 1", "Setup 2")))
+          shiny::column(4, selectInput("setup_select", "Setup", choices = c("Both", "Setup 1", "Setup 2"))),
+          shiny::column(4, selectInput("residual_type", "Residual Type", choices = c("Absolute", "Percent")))
         ),
         shiny::fluidRow(
           shiny::column(4, selectInput("compare_select_pop_1", "Compare Column 1", choices = NULL)),
@@ -361,12 +394,15 @@ ui_dev <- shinydashboard::dashboardPage(
           shiny::column(4, selectInput("compare_select_ins_2", "Compare Ins 2", choices = NULL)),
           shiny::column(4, selectInput("compare_select_outs_2", "Compare Outs 2", choices = NULL))
         ),
-        shiny::uiOutput("compPlots")
+        shiny::uiOutput("compPlots"),
+        shiny::uiOutput("compPlotsResiduals")
       ),
       shinydashboard::tabItem(
         tabName = "compMigEstimates",
         shiny::uiOutput("compImmig"),
         shiny::uiOutput("compEmig"),
+        shiny::uiOutput("compPlotsImmigResiduals"),
+        shiny::uiOutput("compPlotsEmigResiduals"),
         shiny::fluidRow(
           shiny::column(width = 2, actionButton("goME", "Back"), icon = icon("arrow-left"))
         )
