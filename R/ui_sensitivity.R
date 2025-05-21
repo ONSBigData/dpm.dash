@@ -25,30 +25,28 @@ ui_sens <- shinydashboard::dashboardPage(
       shinydashboard::menuItem("Introduction", tabName = "introDoc", icon = icon("book")),
       shinydashboard::menuItem("Global Configuration", tabName = "globalConfig", icon = icon("cog")),
       shinydashboard::menuItem("DPM Specification",
-                               tabName = "dpmSpec", icon = icon("cogs"), startExpanded = FALSE,
-                               shinydashboard::menuSubItem("System Models", tabName = "systemModels", icon = icon("cogs")),
-                               shinydashboard::menuSubItem("Data Models", tabName = "dataModels", icon = icon("database"))
+        tabName = "dpmSpec", icon = icon("cogs"), startExpanded = FALSE,
+        shinydashboard::menuSubItem("System Models", tabName = "systemModels", icon = icon("cogs")),
+        shinydashboard::menuSubItem("Data Models", tabName = "dataModels", icon = icon("database"))
       ),
       shinydashboard::menuItem("DPM Running",
-                               tabName = "dpmRunning", icon = icon("sliders-h"), startExpanded = FALSE,
-                               shinydashboard::menuSubItem("Fit Model", tabName = "fitModel", icon = icon("sliders-h")),
-                               shinydashboard::menuSubItem("Population Estimates", tabName = "popEstimates", icon = icon("people-roof")),
-                               shinydashboard::menuSubItem("Migration Estimates", tabName = "migEstimates", icon = icon("plane"))
+        tabName = "dpmRunning", icon = icon("sliders-h"), startExpanded = FALSE,
+        shinydashboard::menuSubItem("Fit Model", tabName = "fitModel", icon = icon("sliders-h")),
+        shinydashboard::menuSubItem("Population Estimates", tabName = "popEstimates", icon = icon("people-roof")),
+        shinydashboard::menuSubItem("Migration Estimates", tabName = "migEstimates", icon = icon("plane"))
       ),
       shinydashboard::menuItem("Compare Setups",
-                               tabName = "setupComparing", icon = icon("chart-bar"), startExpanded = FALSE, # Changed icon for variety
-                               shinydashboard::menuSubItem("Fit Models", tabName = "fitModels", icon = icon("sliders-h")),
-                               shinydashboard::menuSubItem("Compare Population Estimates", tabName = "compPopEstimates", icon = icon("people-roof")),
-                               shinydashboard::menuSubItem("Compare Migration Estimates", tabName = "compMigEstimates", icon = icon("plane"))
+        tabName = "setupComparing", icon = icon("chart-bar"), startExpanded = FALSE, # Changed icon for variety
+        shinydashboard::menuSubItem("Fit Models", tabName = "fitModels", icon = icon("sliders-h")),
+        shinydashboard::menuSubItem("Compare Population Estimates", tabName = "compPopEstimates", icon = icon("people-roof")),
+        shinydashboard::menuSubItem("Compare Migration Estimates", tabName = "compMigEstimates", icon = icon("plane"))
       ),
-      # <<< START NEW SENSITIVITY ANALYSIS MENU ITEM >>>
       shinydashboard::menuItem("Model Sensitivity Analysis",
-                               tabName = "sensitivityAnalysis", icon = icon("flask"), startExpanded = FALSE,
-                               shinydashboard::menuSubItem("Setup & Run", tabName = "saSetupRun", icon = icon("play-circle")),
-                               shinydashboard::menuSubItem("Population Results", tabName = "saPopResults", icon = icon("people-group")),
-                               shinydashboard::menuSubItem("Migration Results", tabName = "saMigResults", icon = icon("route"))
+        tabName = "sensitivityAnalysis", icon = icon("flask"), startExpanded = FALSE,
+        shinydashboard::menuSubItem("Setup & Run", tabName = "saSetupRun", icon = icon("play-circle")),
+        shinydashboard::menuSubItem("Population Results", tabName = "saPopResults", icon = icon("people-group")),
+        shinydashboard::menuSubItem("Migration Results", tabName = "saMigResults", icon = icon("route"))
       )
-      # <<< END NEW SENSITIVITY ANALYSIS MENU ITEM >>>
     )
   ),
   shinydashboard::dashboardBody(
@@ -197,13 +195,14 @@ ui_sens <- shinydashboard::dashboardPage(
                   title = "Required Inputs", width = 12, solidHeader = TRUE,
                   shiny::textInput("dm_name", "Data Model Name"),
                   shiny::selectInput("series_name", "Choose Series Type",
-                                     choices = c("population", "ins", "outs")
+                    choices = c("population", "ins", "outs")
                   ),
                   shiny::selectInput("data_model", "Choose Data Model",
-                                     choices = c(
-                                       "Normal Data Model", "T-Dist Data Model",
-                                       "Negative Binomial Data Model", "Poisson Data Model"
-                                     )
+                    choices = c(
+                      "Normal Data Model", "T-Dist Data Model",
+                      "Negative Binomial Data Model", "Poisson Data Model",
+                      "Log-Normal Data Model"
+                    )
                   ),
                   shiny::textInput("counts_file", "Counts CSV Filename"),
                   shiny::uiOutput("additionalInputs")
@@ -311,30 +310,30 @@ ui_sens <- shinydashboard::dashboardPage(
         )
       ),
       shinydashboard::tabItem("Population Estimates",
-                              tabName = "popEstimates",
-                              shiny::fluidRow(
-                                shiny::column(4, selectInput("time_select_pop", "Time", choices = NULL)),
-                                shiny::column(4, textInput("compare_select_pop", "Compare Column"))
-                              ),
-                              uiOutput("popPlots"),
-                              shiny::fluidRow(
-                                shiny::column(width = 2, actionButton("goFM", "Back"), icon = icon("arrow-left")),
-                                shiny::column(width = 2, actionButton("goME", "Continue"), icon = icon("arrow-right")),
-                              )
+        tabName = "popEstimates",
+        shiny::fluidRow(
+          shiny::column(4, selectInput("time_select_pop", "Time", choices = NULL)),
+          shiny::column(4, textInput("compare_select_pop", "Compare Column"))
+        ),
+        uiOutput("popPlots"),
+        shiny::fluidRow(
+          shiny::column(width = 2, actionButton("goFM", "Back"), icon = icon("arrow-left")),
+          shiny::column(width = 2, actionButton("goME", "Continue"), icon = icon("arrow-right")),
+        )
       ),
       shinydashboard::tabItem("Migration Estimates",
-                              tabName = "migEstimates",
-                              shiny::fluidRow(
-                                shiny::column(4, selectInput("time_select_mig", "Time", choices = NULL)),
-                                shiny::column(4, textInput("compare_select_ins", "Compare Ins")),
-                                shiny::column(4, textInput("compare_select_outs", "Compare Outs"))
-                              ),
-                              shiny::uiOutput("immPlots"),
-                              shiny::uiOutput("emPlots"),
-                              shiny::fluidRow(
-                                shiny::column(width = 2, actionButton("goPE", "Back"), icon = icon("arrow-left")),
-                                shiny::column(width = 2, actionButton("goSC", "Continue"), icon = icon("arrow-right"))
-                              ),
+        tabName = "migEstimates",
+        shiny::fluidRow(
+          shiny::column(4, selectInput("time_select_mig", "Time", choices = NULL)),
+          shiny::column(4, textInput("compare_select_ins", "Compare Ins")),
+          shiny::column(4, textInput("compare_select_outs", "Compare Outs"))
+        ),
+        shiny::uiOutput("immPlots"),
+        shiny::uiOutput("emPlots"),
+        shiny::fluidRow(
+          shiny::column(width = 2, actionButton("goPE", "Back"), icon = icon("arrow-left")),
+          shiny::column(width = 2, actionButton("goSC", "Continue"), icon = icon("arrow-right"))
+        ),
       ),
       shinydashboard::tabItem(
         tabName = "fitModels",
@@ -373,7 +372,7 @@ ui_sens <- shinydashboard::dashboardPage(
             shiny::uiOutput("compAggNetMig"),
             shiny::uiOutput("compAggPopDiffs"),
             shiny::uiOutput("compAggImmigDiffs"),
-            shiny::uiOutput("compAggEmigDiffs")#,
+            shiny::uiOutput("compAggEmigDiffs") # ,
             # shiny::uiOutput("compAggNetMigDiffs")
           )
         )
@@ -386,20 +385,26 @@ ui_sens <- shinydashboard::dashboardPage(
           shiny::column(4, selectInput("residual_type", "Residual Type", choices = c("Absolute", "Percent")))
         ),
         shiny::fluidRow(
-          shiny::column(4, selectInput("compare_select_pop_1", "Compare Column 1", choices = NULL)),
-          shiny::column(4, selectInput("compare_select_ins_1", "Compare Ins 1", choices = NULL)),
-          shiny::column(4, selectInput("compare_select_outs_1", "Compare Outs 1", choices = NULL))
-        ),
-        shiny::fluidRow(
-          shiny::column(4, selectInput("compare_select_pop_2", "Compare Column 2", choices = NULL)),
-          shiny::column(4, selectInput("compare_select_ins_2", "Compare Ins 2", choices = NULL)),
-          shiny::column(4, selectInput("compare_select_outs_2", "Compare Outs 2", choices = NULL))
+          shiny::column(6, selectInput("compare_select_pop_1", "Compare Column 1", choices = NULL)),
+          shiny::column(6, selectInput("compare_select_pop_2", "Compare Column 2", choices = NULL))
         ),
         shiny::uiOutput("compPlots"),
         shiny::uiOutput("compPlotsResiduals")
       ),
       shinydashboard::tabItem(
         tabName = "compMigEstimates",
+        shiny::fluidRow(
+          shiny::column(4, selectInput("time_select_comp_mig", "Time", choices = NULL)),
+          shiny::column(4, selectInput("setup_select", "Setup", choices = c("Both", "Setup 1", "Setup 2"))),
+          shiny::column(4, selectInput("residual_type", "Residual Type", choices = c("Absolute", "Percent")))
+        ),
+        shiny::fluidRow(
+          shiny::column(3, selectInput("compare_select_ins_1", "Compare Ins 1", choices = NULL)),
+          shiny::column(3, selectInput("compare_select_ins_2", "Compare Ins 2", choices = NULL)),
+          shiny::column(3, selectInput("compare_select_outs_1", "Compare Outs 1", choices = NULL)),
+          shiny::column(3, selectInput("compare_select_outs_2", "Compare Outs 2", choices = NULL))
+        ),
+        shiny::fluidRow(),
         shiny::uiOutput("compImmig"),
         shiny::uiOutput("compEmig"),
         shiny::uiOutput("compPlotsImmigResiduals"),
@@ -408,21 +413,20 @@ ui_sens <- shinydashboard::dashboardPage(
           shiny::column(width = 2, actionButton("goME", "Back"), icon = icon("arrow-left"))
         )
       ),
-      
-      # <<< START NEW SENSITIVITY ANALYSIS TAB ITEM >>>
       shinydashboard::tabItem(
         tabName = "saSetupRun",
         shiny::fluidRow(
           shinydashboard::box(
             title = "Sensitivity Analysis Setup", width = 12, solidHeader = TRUE, status = "primary",
             shiny::p("Select a base system model setup and base data models. Then, choose parameters to vary for sensitivity analysis."),
-            
             shiny::fluidRow(
-              column(6,
-                     shiny::uiOutput("sa_system_model_selector_ui") # For selecting base system model
+              column(
+                6,
+                shiny::uiOutput("sa_system_model_selector_ui") # For selecting base system model
               ),
-              column(6,
-                     shiny::uiOutput("sa_data_model_selector_ui") # For selecting base data models
+              column(
+                6,
+                shiny::uiOutput("sa_data_model_selector_ui") # For selecting base data models
               )
             )
           )
@@ -431,29 +435,34 @@ ui_sens <- shinydashboard::dashboardPage(
           shinydashboard::box(
             title = "System Model Parameter Sensitivity", width = 6, solidHeader = TRUE, status = "info", collapsible = TRUE,
             shiny::selectInput("sa_sysmod_param_select", "Select System Model Parameter to Vary:",
-                               choices = c(
-                                 "None",
-                                 "Lower Rate Limit (Births)" = "births_lower_rate_limit",
-                                 "Lower Rate Limit (Deaths)" = "deaths_lower_rate_limit",
-                                 "Lower Rate Limit (Ins)" = "ins_lower_rate_limit",
-                                 "Lower Rate Limit (Outs)" = "outs_lower_rate_limit",
-                                 "Rate Scaler (Births)" = "births_rate_scale",
-                                 "Rate Noise (Births)" = "births_rate_noise" # Add more as needed
-                                 # Potentially add options for specific models like "births_lower_rate_limit", etc.
-                               )),
+              choices = c(
+                "None",
+                "Dispersion (Births)" = "births_dispersion",
+                "Dispersion (Deaths)" = "deaths_dispersion",
+                "Dispersion (Ins)" = "ins_dispersion",
+                "Dispersion (Outs)" = "outs_dispersion",
+                "Lower Rate Limit (Births)" = "births_lower_rate_limit",
+                "Lower Rate Limit (Deaths)" = "deaths_lower_rate_limit",
+                "Lower Rate Limit (Ins)" = "ins_lower_rate_limit",
+                "Lower Rate Limit (Outs)" = "outs_lower_rate_limit",
+                "Rate Scaler (Births)" = "births_rate_scale",
+                "Rate Scaler (Deaths)" = "deaths_rate_scale",
+                "Rate Scaler (Ins)" = "ins_rate_scale",
+                "Rate Scaler (Outs)" = "outs_rate_scale",
+                "Rate Noise (Births)" = "births_rate_noise",
+                "Rate Noise (Deaths)" = "deaths_rate_noise",
+                "Rate Noise (Ins)" = "ins_rate_noise",
+                "Rate Noise (Outs)" = "outs_rate_noise"
+              )
+            ),
             shiny::uiOutput("sa_sysmod_param_range_ui") # Dynamic UI for min, max, steps
           ),
           shinydashboard::box(
             title = "Data Model Parameter Sensitivity", width = 6, solidHeader = TRUE, status = "info", collapsible = TRUE,
             shiny::selectInput("sa_datamod_name_select", "Select Data Model to Target:", choices = NULL), # Will be populated by selected data models
             shiny::selectInput("sa_datamod_param_select", "Select Data Model Parameter to Vary:",
-                               choices = c(
-                                 "None",
-                                 "Scale Ratio" = "scale_ratio",
-                                 "SD Scaler" = "sd_scaler",
-                                 "Count Scaler" = "count_scaler"
-                                 # Add more as needed
-                               )),
+              choices = NULL
+            ),
             shiny::uiOutput("sa_datamod_param_range_ui") # Dynamic UI for min, max, steps
           )
         ),
@@ -489,7 +498,6 @@ ui_sens <- shinydashboard::dashboardPage(
           )
         )
       )
-      # <<< END NEW SENSITIVITY ANALYSIS TAB ITEM >>>
     )
   )
 )
