@@ -1,12 +1,24 @@
 ## UI Setup
-# Tabs
-# 1. Introduction
-# 2. Global Configuration
-# 3. System Model setup
-# 4. Data Model setup
-# 5. Model fitting
-# 6. Output estimation (population, ins, outs)
-# 7. Model Sensitivity Analysis (NEW)
+# The dashboard is organised into several tabs, each serving a distinct purpose:
+# 1. Introduction: Provides a general overview/guide to using the dashboard
+# 2. Global Configuration: Allows users to set global parameters for the dashboard/models
+# 3. DPM Specification: For defining and managing models (system/data)
+#   3.1. System Model setup: For defining and managing system models (births, deaths, ins, outs)
+#   3.2. Data Model setup: For defining and managing data models (stocks and flows)
+# 4. DPM Running: Interface for running a single DPM model using the defined system/data models
+#   4.1. Fit Model: Fit a single DPM model by selecting a set of system models and data models, view cohort results/failures and a summary of estimates
+#   4.2. Population Estimates: View plots of the population estimates
+#   4.3. Migration Estimates: View plots of the migration estimates
+# 5. Compare Setups: Fit two DPM models with different setups (different system/data models) to compare
+#   5.1. Fit Models: Select the setups for two different DPM runs to compare
+#   5.2. Compare Population Estimates: View plots comparing the population estimates from the two different DPM runs
+#   5.3. Compare Migration Estimates: View plots comparing the migration estimates from the two different DPM runs
+# 6. Model Sensitivity Analysis: Run a simple parameter sensisivity analysis for parameters related to either the system or data models
+#   6.1. Setup & Run: Select the system and data models, along with the parameter and range to analyse
+#   6.2. Population Results: View the population results of the parameter sweep chosen
+#   6.3. Migration Results: View the migration results of the parameter sweep chosen
+
+# Load necessary libraries for the shiny dashboard, UI elements, data manipulation and plotting
 library(shinydashboard)
 library(shiny)
 library(DT)
@@ -17,6 +29,7 @@ library(here)
 library(numbers)
 library(stringr)
 
+# Define the main UI structure for the dashboard
 ui_sens <- shinydashboard::dashboardPage(
   shinydashboard::dashboardHeader(title = "DPM Dashboard (dev)"),
   shinydashboard::dashboardSidebar(
