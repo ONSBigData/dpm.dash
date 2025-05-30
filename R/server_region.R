@@ -108,7 +108,7 @@ server_region <- function(input, output, session) {
     models <- c("births", "deaths", "ins", "outs")
     new_sysmods <- lapply(models, function(model) {
       rates_file <- r[["sysmods"]][[model]][["rates_file"]]
-      rates_df <- utils::read.csv(rates_file)
+      rates_df <- vroom::vroom(rates_file)
 
       if (r[["sysmods"]][[model]][["disp_type"]] == "Single Value") {
         print("using single disp value")
@@ -116,7 +116,7 @@ server_region <- function(input, output, session) {
       } else {
         print("using csv disp")
         disp_file <- file.path(global_config()$data_dir, r[["sysmods"]][[model]][["disp_file"]])
-        disp <- utils::read.csv(disp_file)
+        disp <- vroom::vroom(disp_file)
       }
 
       lower_rates_limit <- input[[paste0(model, "_lower_rate_limit")]]
@@ -126,6 +126,18 @@ server_region <- function(input, output, session) {
       rate_overide <- input[[paste0(model, "_rate_overide")]]
 
       time_selection <- global_config()$time_selection
+
+      # Get the intersecting date selection from the time selection and the rates dfs
+      if(is.null(time_selection) & is.null(r$time_selection)){
+        print("No time selected, set time_selection from rates df")
+        time_selection <- unique(rates_df$time)
+        r$time_selection <- time_selection
+      } else if (setequal(r$time_selection, unique(rates_df$time))){
+        print("Time selection and dates equal, all good!")
+      } else {
+        print("Time selection and dates inequal, subsetting rates df to time selection")
+        time_selection <- time_selection[time_selection %in% r$time_selection]
+      }
 
       # This is what we need to vary by Local authority
       # could just use create_system_model_region in a group map?
@@ -249,7 +261,7 @@ server_region <- function(input, output, session) {
     models <- c("births", "deaths", "ins", "outs")
     new_sysmods <- lapply(models, function(model) {
       rates_file <- r[["sysmods"]][[model]][["rates_file"]]
-      rates_df <- utils::read.csv(rates_file)
+      rates_df <- vroom::vroom(rates_file)
 
       if (r[["sysmods"]][[model]][["disp_type"]] == "Single Value") {
         print("using single disp value")
@@ -257,7 +269,7 @@ server_region <- function(input, output, session) {
       } else {
         print("using csv disp")
         disp_file <- file.path(global_config()$data_dir, r[["sysmods"]][[model]][["disp_file"]])
-        disp <- utils::read.csv(disp_file)
+        disp <- vroom::vroom(disp_file)
       }
 
       lower_rates_limit <- input[[paste0(model, "_lower_rate_limit")]]
@@ -559,6 +571,7 @@ server_region <- function(input, output, session) {
           dm_name = "births",
           series_name = "births",
           dm_type = "Exact Data Model",
+          time_select = r$time_selection,
           counts_df = .
         )
     ) |>
@@ -597,6 +610,7 @@ server_region <- function(input, output, session) {
           dm_name = "deaths",
           series_name = "deaths",
           dm_type = "Exact Data Model",
+          time_select = r$time_selection,
           counts_df = .
         )
     ) |>
@@ -634,9 +648,13 @@ server_region <- function(input, output, session) {
     } else if ((!grepl(",", time_select_str)) & (nchar(time_select_str) > 0)) {
       time_subset_vals <- as.numeric(time_select_str)
     } else {
-      time_subset_vals <- NULL
+      time_subset_vals <- unique(mainData()$time)
     }
 
+    if(!all(time_subset_vals %in% r$time_selection)){
+      print("Time subset values outside of either time selection or system models, subsetting data model.")
+      time_subset_vals <- time_subset_vals[time_subset_vals %in% r$time_selection]
+    }
     print("Setting up data model")
     print(paste0("dm_name; ", input$dm_name))
     print(paste0("series_name; ", input$series_name))
