@@ -50,6 +50,7 @@ run_full_dash <- function() {
 #'
 #' @export
 run_region_dash <- function() {
+  purrr::walk(list.files('R', full.names = T), source)
   source(here::here("R/server_region.R"))
   source(here::here("R/ui_region.R"))
 
