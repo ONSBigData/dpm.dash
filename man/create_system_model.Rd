@@ -11,7 +11,8 @@ create_system_model(
   time_selection = NULL,
   lower_rates_limit = 0,
   rate_scaler = 1,
-  rate_overide = -1
+  rate_overide = -1,
+  rate_noise = 0
 )
 }
 \arguments{
@@ -28,6 +29,8 @@ create_system_model(
 \item{rate_scaler}{(Optional) A numeric scaler term to apply to the raw rate in the rates_df}
 
 \item{rate_overide}{(Optional) A numeric rate to impute to all cells, default to -1 to not apply and use raw rate}
+
+\item{rate_noise}{(Optional) A numeric noise term to apply to t he raw rate in the rates_df (as a \% of the raw rate e.g. rate_noise = 0.1 is equal to 10\% noise)}
 }
 \value{
 An object of class \code{accountTMB_sysmod} representing the created system model. This object can be used in subsequent accountTMB analyses.

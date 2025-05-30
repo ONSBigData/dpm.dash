@@ -51,7 +51,7 @@ ui_dev <- shinydashboard::dashboardPage(
               "Please provide the following global configuration parameters:",
               shiny::tags$ul(
                 shiny::tags$li("Input Data Directory : Defaults to the /data directory for dummy data, set to location of any data used for system/data models."),
-                shiny::tags$li("Output Directory : Defaults to the /output directory, set to location to save results.RDS file/.csv file from ‘Fit Model’ tab."),
+                shiny::tags$li("Output Directory : Defaults to the /output directory, set to location to save results.RDS file/.csv file from 'Fit Model' tab."),
                 shiny::tags$li("Time Selection : Defaults to empty (all), optional parameter to subset all data to for testing (comma separated years)."),
                 shiny::tags$li("Seed Value : Defaults to a random prime number, can be used for reproducibility.")
               )

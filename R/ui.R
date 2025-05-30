@@ -40,7 +40,7 @@ ui <- shinydashboard::dashboardPage(
     shinydashboard::tabItems(
       shinydashboard::tabItem(
         tabName = "introDoc",
-        shiny::includeMarkdown(here::here("vignettes/guide.md"))
+        shiny::includeMarkdown(here::here("inst/extdata/guide.md"))
         ),
       shinydashboard::tabItem(
         tabName = "globalConfig",

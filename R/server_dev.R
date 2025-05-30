@@ -91,9 +91,11 @@ server_dev <- function(input, output, session) {
 
       rate_overide <- input[[paste0(model, "_rate_overide")]]
 
+      rate_noise <- input[[paste0(model, "_rate_noise")]]
+
       time_selection <- global_config()$time_selection
 
-      create_system_model(model, rates_df, disp, time_selection, lower_rates_limit, rate_scaler, rate_overide)
+      create_system_model(model, rates_df, disp, time_selection, lower_rates_limit, rate_scaler, rate_overide, rate_noise)
     })
 
     if (file_error) { # Display a warning if any file errors occurred
@@ -235,9 +237,11 @@ server_dev <- function(input, output, session) {
 
       rate_overide <- input[[paste0(model, "_rate_overide")]]
 
+      rate_noise <- input[[paste0(model, "_rate_noise")]]
+
       time_selection <- global_config()$time_selection
 
-      create_system_model(model, rates_df, disp, time_selection, lower_rates_limit, rate_scaler, rate_overide)
+      create_system_model(model, rates_df, disp, time_selection, lower_rates_limit, rate_scaler, rate_overide, rate_noise)
     })
 
     if (file_error) { # Display a warning if any file errors occurred
@@ -311,7 +315,6 @@ server_dev <- function(input, output, session) {
       extraData$min_sd <- input$min_sd
       extraData$count_scaler <- input$count_scaler
     } else if (input$data_model == "T-Dist Data Model") {
-
       if (input$scale_type == "Single Value") {
         extraData$scale_df <- input$scale_value
       } else {
@@ -340,7 +343,6 @@ server_dev <- function(input, output, session) {
 
       extraData$scale_ratio <- input$scale_ratio
       extraData$count_scaler <- input$count_scaler
-
     } else if (input$data_model == "Negative Binomial Data Model") {
       if (input$disp_type == "Single Value") {
         extraData$disp <- input$disp_value
@@ -625,6 +627,20 @@ server_dev <- function(input, output, session) {
     updateSelectInput(session, "delete_data_model", choices = names(datamod_list()))
   })
 
+  # Update the dropdown choices when datamod_list changes
+  observe({
+    updateSelectInput(session, "plot_data_model", choices = names(datamod_list()))
+  })
+
+  # Update the dropdown choices when datamod_list changes
+  observe({
+    updateSelectInput(session, "inspect_data_model1", choices = names(datamod_list()))
+  })
+
+  observe({
+    updateSelectInput(session, "inspect_data_model2", choices = names(datamod_list()))
+  })
+
   # Observe event for deleting a data model
   shiny::observeEvent(input$delete_button, {
     req(input$delete_data_model)
@@ -633,15 +649,87 @@ server_dev <- function(input, output, session) {
     datamod_list(currentList)
   })
 
+  # Observe event for plotting a data model
+  shiny::observeEvent(input$plotdm_button, {
+    req(input$plot_data_model)
+    currentList <- datamod_list()
+    dm_select <- currentList[[input$plot_data_model]]
+
+    output$dmModelPlots <- shiny::renderUI({
+      plotly::plotlyOutput(outputId = "plot_dm_model")
+    })
+
+    output$plot_dm_model <- plotly::renderPlotly({
+      p <- ggplot2::ggplot(data = dm_select$data %>% group_by(.data$age, .data$sex, .data$time) %>% summarise(count = sum(count))) +
+        ggplot2::geom_point(ggplot2::aes(x = .data$age, y = .data$count, color = as.factor(.data$time))) +
+        ggplot2::geom_line(ggplot2::aes(x = .data$age, y = .data$count, color = as.factor(.data$time))) +
+        ggplot2::facet_grid(cols = vars(.data$sex))
+    })
+  })
+
+
+  # Observe event for plotting a data model
+  shiny::observeEvent(input$inspectdm_button1, {
+    req(input$inspect_data_model1)
+    currentList <- datamod_list()
+    dm_select <- currentList[[input$inspect_data_model1]]
+
+    output$dmModelInspect1 <- renderDT({
+      datatable(dm_select$data, filter = list(position = "top", clear = FALSE))
+    })
+  })
+
+  # Observe event for plotting a data model
+  shiny::observeEvent(input$inspectdm_button2, {
+    req(input$inspect_data_model2)
+    currentList <- datamod_list()
+    dm_select <- currentList[[input$inspect_data_model2]]
+
+    output$dmModelInspect2 <- renderDT({
+      datatable(dm_select$data, filter = list(position = "top", clear = FALSE))
+    })
+  })
+
   output$loadedDataModels <- renderDT({
     dataModels <- datamod_list()
     if (length(dataModels) > 0) {
       modelSummaries <- lapply(dataModels, function(dm) {
-        c(
-          dm_name = dm$nm_data,
-          series_name = dm$nm_series,
-          dm_type = class(dm)
-        )
+        if (class(dm)[[1]] == "accountTMB_datamod_exact") {
+          c(
+            dm_name = dm$nm_data,
+            series_name = dm$nm_series,
+            dm_type = class(dm)[[1]],
+            dm_data_cols = list(colnames(dm$data))
+          )
+        } else if (class(dm)[[1]] == "accountTMB_datamod_norm") {
+          c(
+            dm_name = dm$nm_data,
+            series_name = dm$nm_series,
+            dm_type = class(dm)[[1]],
+            dm_data_cols = list(colnames(dm$data))
+          )
+        } else if (class(dm)[[1]] == "accountTMB_datamod_t") {
+          c(
+            dm_name = dm$nm_data,
+            series_name = dm$nm_series,
+            dm_type = class(dm)[[1]],
+            dm_data_cols = list(colnames(dm$data))
+          )
+        } else if (class(dm)[[1]] == "accountTMB_datamod_nbinom") {
+          c(
+            dm_name = dm$nm_data,
+            series_name = dm$nm_series,
+            dm_type = class(dm)[[1]],
+            dm_data_cols = list(colnames(dm$data))
+          )
+        } else if (class(dm)[[1]] == "accountTMB_datamod_poisson") {
+          c(
+            dm_name = dm$nm_data,
+            series_name = dm$nm_series,
+            dm_type = class(dm)[[1]],
+            dm_data_cols = list(colnames(dm$data))
+          )
+        }
       })
       modelSummaryDF <- do.call(rbind, modelSummaries)
       datatable(modelSummaryDF)
@@ -674,6 +762,15 @@ server_dev <- function(input, output, session) {
     # Update the dropdown choices when datamod_list changes
     observe({
       updateSelectInput(session, "delete_data_model", choices = names(datamod_list()))
+    })
+    observe({
+      updateSelectInput(session, "plot_data_model", choices = names(datamod_list()))
+    })
+    observe({
+      updateSelectInput(session, "inspect_data_model1", choices = names(datamod_list()))
+    })
+    observe({
+      updateSelectInput(session, "inspect_data_model2", choices = names(datamod_list()))
     })
   })
 
@@ -808,14 +905,13 @@ server_dev <- function(input, output, session) {
     })
 
     output$population_estimates <- renderPlotly({
-      req(input$time_select_pop, input$sex_select_pop)
+      req(input$time_select_pop)
 
       if (nzchar(input$compare_select_pop) & (input$compare_select_pop %in% colnames(pop_res_sub()))) {
         p <- ggplot2::ggplot(
           pop_res_sub() %>%
             dplyr::filter(
-              .data$time == input$time_select_pop,
-              .data$sex == input$sex_select_pop
+              .data$time == input$time_select_pop
             ),
           ggplot2::aes(
             x = .data$age,
@@ -833,7 +929,8 @@ server_dev <- function(input, output, session) {
             size = 0.3
           ) +
           ggplot2::ylab("Count") +
-          ggplot2::ggtitle("Population estimates")
+          ggplot2::ggtitle("Population estimates") +
+          ggplot2::facet_grid(cols = vars(.data$sex))
 
         plotly::ggplotly(p) # Convert to interactive plot
       } else {
@@ -841,7 +938,6 @@ server_dev <- function(input, output, session) {
           pop_res_sub() %>%
             dplyr::filter(
               .data$time == input$time_select_pop,
-              .data$sex == input$sex_select_pop
             ),
           ggplot2::aes(
             x = .data$age,
@@ -855,7 +951,8 @@ server_dev <- function(input, output, session) {
             col = "darkorange"
           ) +
           ggplot2::ylab("Count") +
-          ggplot2::ggtitle("Population estimates")
+          ggplot2::ggtitle("Population estimates") +
+          ggplot2::facet_grid(cols = vars(.data$sex))
 
         plotly::ggplotly(p) # Convert to interactive plot
       }
@@ -868,14 +965,13 @@ server_dev <- function(input, output, session) {
     })
 
     output$immigration_estimates <- renderPlotly({
-      req(input$time_select_mig, input$sex_select_mig)
+      req(input$time_select_mig)
 
       if (nzchar(input$compare_select_ins) & (input$compare_select_ins %in% colnames(mig_res_sub()))) {
         p <- ggplot2::ggplot(
           mig_res_sub() %>%
             dplyr::filter(
-              .data$time == input$time_select_mig,
-              .data$sex == input$sex_select_mig
+              .data$time == input$time_select_mig
             ),
           ggplot2::aes(
             x = .data$age,
@@ -893,15 +989,15 @@ server_dev <- function(input, output, session) {
             size = 0.3
           ) +
           ggplot2::ylab("Count") +
-          ggplot2::ggtitle("Immigration estimates")
+          ggplot2::ggtitle("Immigration estimates") +
+          ggplot2::facet_grid(cols = vars(.data$sex))
 
         plotly::ggplotly(p) # Convert to interactive plot
       } else {
         p <- ggplot2::ggplot(
           mig_res_sub() %>%
             dplyr::filter(
-              .data$time == input$time_select_mig,
-              .data$sex == input$sex_select_mig
+              .data$time == input$time_select_mig
             ),
           ggplot2::aes(
             x = .data$age,
@@ -915,7 +1011,8 @@ server_dev <- function(input, output, session) {
             col = "darkorange"
           ) +
           ggplot2::ylab("Count") +
-          ggplot2::ggtitle("Immigration estimates")
+          ggplot2::ggtitle("Immigration estimates") +
+          ggplot2::facet_grid(cols = vars(.data$sex))
 
         plotly::ggplotly(p) # Convert to interactive plot
       }
@@ -932,8 +1029,7 @@ server_dev <- function(input, output, session) {
         p <- ggplot2::ggplot(
           mig_res_sub() %>%
             dplyr::filter(
-              .data$time == input$time_select_mig,
-              .data$sex == input$sex_select_mig
+              .data$time == input$time_select_mig
             ),
           ggplot2::aes(
             x = .data$age,
@@ -951,15 +1047,15 @@ server_dev <- function(input, output, session) {
             size = 0.3
           ) +
           ggplot2::ylab("") +
-          ggplot2::ggtitle("Emigration estimates")
+          ggplot2::ggtitle("Emigration estimates") +
+          ggplot2::facet_grid(cols = vars(.data$sex))
 
         plotly::ggplotly(p) # Convert to interactive plot
       } else {
         p <- ggplot2::ggplot(
           mig_res_sub() %>%
             dplyr::filter(
-              .data$time == input$time_select_mig,
-              .data$sex == input$sex_select_mig
+              .data$time == input$time_select_mig
             ),
           ggplot2::aes(
             x = .data$age,
@@ -973,7 +1069,8 @@ server_dev <- function(input, output, session) {
             col = "darkorange"
           ) +
           ggplot2::ylab("") +
-          ggplot2::ggtitle("Emigration estimates")
+          ggplot2::ggtitle("Emigration estimates") +
+          ggplot2::facet_grid(cols = vars(.data$sex))
 
         plotly::ggplotly(p) # Convert to interactive plot
       }
@@ -1082,6 +1179,7 @@ server_dev <- function(input, output, session) {
       dplyr::mutate(setup = 2) %>%
       dplyr::select(c("age", "sex", "time", "ins.lower", "ins.fitted", "ins.upper", "outs.lower", "outs.fitted", "outs.upper", "setup"))
 
+
     pop_res_comp <- shiny::reactive(rbind(pop_res_1, pop_res_2))
     mig_res_comp <- shiny::reactive(rbind(mig_res_1, mig_res_2))
 
@@ -1089,6 +1187,24 @@ server_dev <- function(input, output, session) {
     pop_comp_2_cols <- shiny::reactive(pop_comp_2)
     mig_comp_1_cols <- shiny::reactive(mig_comp_1)
     mig_comp_2_cols <- shiny::reactive(mig_comp_2)
+
+    pop_res_comp_wide <- shiny::reactive(merge(.data$pop_res_1 %>% dplyr::select(c("age", "sex", "time", "population.fitted")) %>% rename(fitted1 = .data$population.fitted),
+                                               .data$pop_res_2 %>% dplyr::select(c("age", "sex", "time", "population.fitted")) %>% rename(fitted2 = .data$population.fitted),
+      by = c("age", "sex", "time")
+    ) %>% dplyr::mutate(
+      fitted_residuals_abs = .data$fitted2 - .data$fitted1,
+      fitted_residuals_perc = 100 * (.data$fitted_residuals_abs / .data$fitted1)
+    ))
+
+    mig_res_comp_wide <- shiny::reactive(merge(mig_res_1 %>% dplyr::select(c("age", "sex", "time", "ins.fitted", "outs.fitted")) %>% dplyr::rename(ins1 = .data$ins.fitted, outs1 = .data$outs.fitted),
+      mig_res_2 %>% dplyr::select(c("age", "sex", "time", "ins.fitted", "outs.fitted")) %>% dplyr::rename(ins2 = .data$ins.fitted, outs2 = .data$outs.fitted),
+      by = c("age", "sex", "time")
+    ) %>% dplyr::mutate(
+      ins_residuals_abs = .data$ins2 - .data$ins1,
+      ins_residuals_perc = 100 * (.data$ins_residuals_abs / .data$ins1),
+      outs_residuals_abs = .data$outs2 - .data$outs1,
+      outs_residuals_perc = 100 * (.data$outs_residuals_abs / .data$outs1)
+    ))
 
     shiny::showModal(modalDialog(
       title = "Populations estimated",
@@ -1123,7 +1239,7 @@ server_dev <- function(input, output, session) {
     })
 
     output$comparing_estimates <- plotly::renderPlotly({
-      req(input$time_select_comp, input$sex_select_comp, input$setup_select)
+      req(input$time_select_comp, input$setup_select)
 
       if (input$setup_select == "Setup 1") {
         if (nzchar(input$compare_select_pop_1) & (input$compare_select_pop_1 %in% colnames(pop_comp_1_cols()))) {
@@ -1131,7 +1247,6 @@ server_dev <- function(input, output, session) {
             pop_res_comp() %>%
               dplyr::filter(
                 .data$time == input$time_select_comp,
-                .data$sex == input$sex_select_comp,
                 .data$setup == 1
               ),
             ggplot2::aes(
@@ -1149,14 +1264,14 @@ server_dev <- function(input, output, session) {
             ggplot2::geom_point(
               data = pop_comp_1_cols() %>%
                 dplyr::filter(
-                  .data$time == input$time_select_comp,
-                  .data$sex == input$sex_select_comp
+                  .data$time == input$time_select_comp
                 ), ggplot2::aes(y = .data[[input$compare_select_pop_1]]),
               col = "darkblue",
               size = 0.3
             ) +
             ggplot2::ylab("") +
-            ggplot2::ggtitle("Population comparison")
+            ggplot2::ggtitle("Population comparison") +
+            ggplot2::facet_grid(cols = vars(.data$sex))
 
           plotly::ggplotly(p) # Convert to interactive plot
         }
@@ -1166,7 +1281,6 @@ server_dev <- function(input, output, session) {
             pop_res_comp() %>%
               dplyr::filter(
                 .data$time == input$time_select_comp,
-                .data$sex == input$sex_select_comp,
                 .data$setup == 2
               ),
             ggplot2::aes(
@@ -1184,14 +1298,14 @@ server_dev <- function(input, output, session) {
             ggplot2::geom_point(
               data = pop_comp_2_cols() %>%
                 dplyr::filter(
-                  .data$time == input$time_select_comp,
-                  .data$sex == input$sex_select_comp
+                  .data$time == input$time_select_comp
                 ), ggplot2::aes(y = .data[[input$compare_select_pop_2]]),
               col = "darkblue",
               size = 0.3
             ) +
             ggplot2::ylab("") +
-            ggplot2::ggtitle("Population comparison")
+            ggplot2::ggtitle("Population comparison") +
+            ggplot2::facet_grid(cols = vars(.data$sex))
 
           plotly::ggplotly(p) # Convert to interactive plot
         }
@@ -1201,8 +1315,7 @@ server_dev <- function(input, output, session) {
           p <- ggplot2::ggplot(
             pop_res_comp() %>%
               dplyr::filter(
-                .data$time == input$time_select_comp,
-                .data$sex == input$sex_select_comp
+                .data$time == input$time_select_comp
               ),
             ggplot2::aes(
               x = .data$age,
@@ -1219,8 +1332,7 @@ server_dev <- function(input, output, session) {
             ggplot2::geom_point(
               data = pop_comp_1_cols() %>%
                 dplyr::filter(
-                  .data$time == input$time_select_comp,
-                  .data$sex == input$sex_select_comp
+                  .data$time == input$time_select_comp
                 ), ggplot2::aes(y = .data[[input$compare_select_pop_1]]),
               col = "darkgreen",
               size = 0.3
@@ -1228,17 +1340,74 @@ server_dev <- function(input, output, session) {
             ggplot2::geom_point(
               data = pop_comp_2_cols() %>%
                 dplyr::filter(
-                  .data$time == input$time_select_comp,
-                  .data$sex == input$sex_select_comp
+                  .data$time == input$time_select_comp
                 ), ggplot2::aes(y = .data[[input$compare_select_pop_2]]),
               col = "darkblue",
               size = 0.3
             ) +
             ggplot2::ylab("") +
-            ggplot2::ggtitle("Population comparison")
+            ggplot2::ggtitle("Population comparison") +
+            ggplot2::facet_grid(cols = vars(.data$sex))
 
           plotly::ggplotly(p) # Convert to interactive plot
         }
+      }
+    })
+
+
+    output$compPlotsResiduals <- shiny::renderUI({
+      plotly::plotlyOutput(outputId = "comparing_estimates_residuals")
+    })
+
+    output$comparing_estimates_residuals <- plotly::renderPlotly({
+      req(input$time_select_comp, input$residual_type)
+
+      if (input$residual_type == "Absolute") {
+        p <- ggplot2::ggplot(
+          pop_res_comp_wide() %>%
+            dplyr::filter(
+              .data$time == input$time_select_comp
+            ),
+          ggplot2::aes(
+            x = .data$age,
+            y = .data$fitted_residuals_abs
+          )
+        ) +
+          ggplot2::geom_segment(
+            aes(xend = age, yend = 0)
+          ) +
+          ggplot2::geom_point(
+            size = 2
+          ) +
+          ggplot2::ylab("Age") +
+          ggplot2::xlab("Absolute Difference (Setup 2 - Setup 1)") +
+          ggplot2::ggtitle("Population Comparison Residuals (Absolute)") +
+          ggplot2::facet_grid(cols = vars(.data$sex))
+
+        plotly::ggplotly(p) # Convert to interactive plot
+      } else if (input$residual_type == "Percent") {
+        p <- ggplot2::ggplot(
+          pop_res_comp_wide() %>%
+            dplyr::filter(
+              .data$time == input$time_select_comp
+            ),
+          ggplot2::aes(
+            x = .data$age,
+            y = .data$fitted_residuals_perc
+          )
+        ) +
+          ggplot2::geom_segment(
+            aes(xend = age, yend = 0)
+          ) +
+          ggplot2::geom_point(
+            size = 2
+          ) +
+          ggplot2::ylab("Age") +
+          ggplot2::xlab("Percent Difference (Setup 2 - Setup 1)") +
+          ggplot2::ggtitle("Population Comparison Residuals (Percent)") +
+          ggplot2::facet_grid(cols = vars(.data$sex))
+
+        plotly::ggplotly(p) # Convert to interactive plot
       }
     })
 
@@ -1246,9 +1415,8 @@ server_dev <- function(input, output, session) {
       plotly::plotlyOutput(outputId = "comparing_ins")
     })
 
-
     output$comparing_ins <- plotly::renderPlotly({
-      req(input$time_select_comp, input$sex_select_comp, input$setup_select)
+      req(input$time_select_comp, input$setup_select)
 
       if (input$setup_select == "Setup 1") {
         if (nzchar(input$compare_select_ins_1) & (input$compare_select_ins_1 %in% colnames(mig_comp_1_cols())) &
@@ -1257,7 +1425,6 @@ server_dev <- function(input, output, session) {
             mig_res_comp() %>%
               dplyr::filter(
                 .data$time == input$time_select_comp,
-                .data$sex == input$sex_select_comp,
                 .data$setup == 1
               ),
             ggplot2::aes(
@@ -1275,14 +1442,14 @@ server_dev <- function(input, output, session) {
             ggplot2::geom_point(
               data = mig_comp_1_cols() %>%
                 dplyr::filter(
-                  .data$time == input$time_select_comp,
-                  .data$sex == input$sex_select_comp
+                  .data$time == input$time_select_comp
                 ), ggplot2::aes(y = .data[[input$compare_select_ins_1]]),
               col = "darkblue",
               size = 0.3
             ) +
             ggplot2::ylab("") +
-            ggplot2::ggtitle("Immigration comparison")
+            ggplot2::ggtitle("Immigration comparison") +
+            ggplot2::facet_grid(cols = vars(.data$sex))
 
           plotly::ggplotly(p) # Convert to interactive plot
         } else if (!nzchar(input$compare_select_ins_1) | (input$compare_select_ins_1 %in% colnames(mig_comp_1_cols())) &
@@ -1291,7 +1458,6 @@ server_dev <- function(input, output, session) {
             mig_res_comp() %>%
               dplyr::filter(
                 .data$time == input$time_select_comp,
-                .data$sex == input$sex_select_comp,
                 .data$setup == 1
               ),
             ggplot2::aes(
@@ -1307,7 +1473,8 @@ server_dev <- function(input, output, session) {
               position = ggplot2::position_dodge(width = 0.5)
             ) +
             ggplot2::ylab("") +
-            ggplot2::ggtitle("Immigration comparison")
+            ggplot2::ggtitle("Immigration comparison") +
+            ggplot2::facet_grid(cols = vars(.data$sex))
 
           plotly::ggplotly(p) # Convert to interactive plot
         }
@@ -1318,7 +1485,6 @@ server_dev <- function(input, output, session) {
             mig_res_comp() %>%
               dplyr::filter(
                 .data$time == input$time_select_comp,
-                .data$sex == input$sex_select_comp,
                 .data$setup == 2
               ),
             ggplot2::aes(
@@ -1336,14 +1502,14 @@ server_dev <- function(input, output, session) {
             ggplot2::geom_point(
               data = mig_comp_2_cols() %>%
                 dplyr::filter(
-                  .data$time == input$time_select_comp,
-                  .data$sex == input$sex_select_comp
+                  .data$time == input$time_select_comp
                 ), ggplot2::aes(y = .data[[input$compare_select_ins_2]]),
               col = "darkblue",
               size = 0.3
             ) +
             ggplot2::ylab("") +
-            ggplot2::ggtitle("Immigration comparison")
+            ggplot2::ggtitle("Immigration comparison") +
+            ggplot2::facet_grid(cols = vars(.data$sex))
 
           plotly::ggplotly(p) # Convert to interactive plot
         } else if (!nzchar(input$compare_select_ins_2) | !(input$compare_select_ins_2 %in% colnames(mig_comp_2_cols())) &
@@ -1352,7 +1518,6 @@ server_dev <- function(input, output, session) {
             mig_res_comp() %>%
               dplyr::filter(
                 .data$time == input$time_select_comp,
-                .data$sex == input$sex_select_comp,
                 .data$setup == 2
               ),
             ggplot2::aes(
@@ -1368,7 +1533,8 @@ server_dev <- function(input, output, session) {
               position = ggplot2::position_dodge(width = 0.5)
             ) +
             ggplot2::ylab("") +
-            ggplot2::ggtitle("Immigration comparison")
+            ggplot2::ggtitle("Immigration comparison") +
+            ggplot2::facet_grid(cols = vars(.data$sex))
 
           plotly::ggplotly(p) # Convert to interactive plot
         }
@@ -1379,8 +1545,7 @@ server_dev <- function(input, output, session) {
           p <- ggplot2::ggplot(
             mig_res_comp() %>%
               dplyr::filter(
-                .data$time == input$time_select_comp,
-                .data$sex == input$sex_select_comp
+                .data$time == input$time_select_comp
               ),
             ggplot2::aes(
               x = .data$age,
@@ -1397,8 +1562,7 @@ server_dev <- function(input, output, session) {
             ggplot2::geom_point(
               data = mig_comp_1_cols() %>%
                 dplyr::filter(
-                  .data$time == input$time_select_comp,
-                  .data$sex == input$sex_select_comp
+                  .data$time == input$time_select_comp
                 ), ggplot2::aes(y = .data[[input$compare_select_ins_1]]),
               col = "darkgreen",
               size = 0.3
@@ -1406,14 +1570,14 @@ server_dev <- function(input, output, session) {
             ggplot2::geom_point(
               data = mig_comp_2_cols() %>%
                 dplyr::filter(
-                  .data$time == input$time_select_comp,
-                  .data$sex == input$sex_select_comp
+                  .data$time == input$time_select_comp
                 ), ggplot2::aes(y = .data[[input$compare_select_ins_2]]),
               col = "darkblue",
               size = 0.3
             ) +
             ggplot2::ylab("") +
-            ggplot2::ggtitle("Immigration comparison")
+            ggplot2::ggtitle("Immigration comparison") +
+            ggplot2::facet_grid(cols = vars(.data$sex))
 
           plotly::ggplotly(p) # Convert to interactive plot
         } else if (nzchar(input$compare_select_ins_1) & (input$compare_select_ins_1 %in% colnames(mig_comp_1_cols())) &
@@ -1421,8 +1585,7 @@ server_dev <- function(input, output, session) {
           p <- ggplot2::ggplot(
             mig_res_comp() %>%
               dplyr::filter(
-                .data$time == input$time_select_comp,
-                .data$sex == input$sex_select_comp
+                .data$time == input$time_select_comp
               ),
             ggplot2::aes(
               x = .data$age,
@@ -1439,14 +1602,14 @@ server_dev <- function(input, output, session) {
             ggplot2::geom_point(
               data = mig_comp_1_cols() %>%
                 dplyr::filter(
-                  .data$time == input$time_select_comp,
-                  .data$sex == input$sex_select_comp
+                  .data$time == input$time_select_comp
                 ), ggplot2::aes(y = .data[[input$compare_select_ins_1]]),
               col = "darkgreen",
               size = 0.3
             ) +
             ggplot2::ylab("") +
-            ggplot2::ggtitle("Immigration comparison")
+            ggplot2::ggtitle("Immigration comparison") +
+            ggplot2::facet_grid(cols = vars(.data$sex))
 
           plotly::ggplotly(p) # Convert to interactive plot
         } else if (nzchar(input$compare_select_ins_2) & (input$compare_select_ins_2 %in% colnames(mig_comp_2_cols())) &
@@ -1454,8 +1617,7 @@ server_dev <- function(input, output, session) {
           p <- ggplot2::ggplot(
             mig_res_comp() %>%
               dplyr::filter(
-                .data$time == input$time_select_comp,
-                .data$sex == input$sex_select_comp
+                .data$time == input$time_select_comp
               ),
             ggplot2::aes(
               x = .data$age,
@@ -1472,14 +1634,14 @@ server_dev <- function(input, output, session) {
             ggplot2::geom_point(
               data = mig_comp_2_cols() %>%
                 dplyr::filter(
-                  .data$time == input$time_select_comp,
-                  .data$sex == input$sex_select_comp
+                  .data$time == input$time_select_comp
                 ), ggplot2::aes(y = .data[[input$compare_select_ins_2]]),
               col = "darkblue",
               size = 0.3
             ) +
             ggplot2::ylab("") +
-            ggplot2::ggtitle("Immigration comparison")
+            ggplot2::ggtitle("Immigration comparison") +
+            ggplot2::facet_grid(cols = vars(.data$sex))
 
           plotly::ggplotly(p) # Convert to interactive plot
         } else if (!nzchar(input$compare_select_ins_1) | !(input$compare_select_ins_1 %in% colnames(mig_comp_1_cols())) &
@@ -1488,8 +1650,7 @@ server_dev <- function(input, output, session) {
           p <- ggplot2::ggplot(
             mig_res_comp() %>%
               dplyr::filter(
-                .data$time == input$time_select_comp,
-                .data$sex == input$sex_select_comp
+                .data$time == input$time_select_comp
               ),
             ggplot2::aes(
               x = .data$age,
@@ -1504,7 +1665,8 @@ server_dev <- function(input, output, session) {
               position = ggplot2::position_dodge(width = 0.5)
             ) +
             ggplot2::ylab("") +
-            ggplot2::ggtitle("Immigration comparison")
+            ggplot2::ggtitle("Immigration comparison") +
+            ggplot2::facet_grid(cols = vars(.data$sex))
 
           plotly::ggplotly(p) # Convert to interactive plot
         }
@@ -1517,7 +1679,7 @@ server_dev <- function(input, output, session) {
     })
 
     output$comparing_outs <- plotly::renderPlotly({
-      req(input$time_select_comp, input$sex_select_comp, input$setup_select)
+      req(input$time_select_comp, input$setup_select)
 
       if (input$setup_select == "Setup 1") {
         if (nzchar(input$compare_select_outs_1) & (input$compare_select_outs_1 %in% colnames(mig_comp_1_cols())) &
@@ -1526,7 +1688,6 @@ server_dev <- function(input, output, session) {
             mig_res_comp() %>%
               dplyr::filter(
                 .data$time == input$time_select_comp,
-                .data$sex == input$sex_select_comp,
                 .data$setup == 1
               ),
             ggplot2::aes(
@@ -1544,14 +1705,14 @@ server_dev <- function(input, output, session) {
             ggplot2::geom_point(
               data = mig_comp_1_cols() %>%
                 dplyr::filter(
-                  .data$time == input$time_select_comp,
-                  .data$sex == input$sex_select_comp
+                  .data$time == input$time_select_comp
                 ), ggplot2::aes(y = .data[[input$compare_select_outs_1]]),
               col = "darkblue",
               size = 0.3
             ) +
             ggplot2::ylab("") +
-            ggplot2::ggtitle("Emigration comparison")
+            ggplot2::ggtitle("Emigration comparison") +
+            ggplot2::facet_grid(cols = vars(.data$sex))
 
           plotly::ggplotly(p) # Convert to interactive plot
         } else if (!nzchar(input$compare_select_outs_1) | (input$compare_select_outs_1 %in% colnames(mig_comp_1_cols())) &
@@ -1560,7 +1721,6 @@ server_dev <- function(input, output, session) {
             mig_res_comp() %>%
               dplyr::filter(
                 .data$time == input$time_select_comp,
-                .data$sex == input$sex_select_comp,
                 .data$setup == 1
               ),
             ggplot2::aes(
@@ -1576,7 +1736,8 @@ server_dev <- function(input, output, session) {
               position = ggplot2::position_dodge(width = 0.5)
             ) +
             ggplot2::ylab("") +
-            ggplot2::ggtitle("Emigration comparison")
+            ggplot2::ggtitle("Emigration comparison") +
+            ggplot2::facet_grid(cols = vars(.data$sex))
 
           plotly::ggplotly(p) # Convert to interactive plot
         }
@@ -1587,7 +1748,6 @@ server_dev <- function(input, output, session) {
             mig_res_comp() %>%
               dplyr::filter(
                 .data$time == input$time_select_comp,
-                .data$sex == input$sex_select_comp,
                 .data$setup == 2
               ),
             ggplot2::aes(
@@ -1605,14 +1765,14 @@ server_dev <- function(input, output, session) {
             ggplot2::geom_point(
               data = mig_comp_2_cols() %>%
                 dplyr::filter(
-                  .data$time == input$time_select_comp,
-                  .data$sex == input$sex_select_comp
+                  .data$time == input$time_select_comp
                 ), ggplot2::aes(y = .data[[input$compare_select_outs_2]]),
               col = "darkblue",
               size = 0.3
             ) +
             ggplot2::ylab("") +
-            ggplot2::ggtitle("Emigration comparison")
+            ggplot2::ggtitle("Emigration comparison") +
+            ggplot2::facet_grid(cols = vars(.data$sex))
 
           plotly::ggplotly(p) # Convert to interactive plot
         } else if (!nzchar(input$compare_select_outs_2) | !(input$compare_select_outs_2 %in% colnames(mig_comp_2_cols())) &
@@ -1621,7 +1781,6 @@ server_dev <- function(input, output, session) {
             mig_res_comp() %>%
               dplyr::filter(
                 .data$time == input$time_select_comp,
-                .data$sex == input$sex_select_comp,
                 .data$setup == 2
               ),
             ggplot2::aes(
@@ -1637,7 +1796,8 @@ server_dev <- function(input, output, session) {
               position = ggplot2::position_dodge(width = 0.5)
             ) +
             ggplot2::ylab("") +
-            ggplot2::ggtitle("Emigration comparison")
+            ggplot2::ggtitle("Emigration comparison") +
+            ggplot2::facet_grid(cols = vars(.data$sex))
 
           plotly::ggplotly(p) # Convert to interactive plot
         }
@@ -1648,8 +1808,7 @@ server_dev <- function(input, output, session) {
           p <- ggplot2::ggplot(
             mig_res_comp() %>%
               dplyr::filter(
-                .data$time == input$time_select_comp,
-                .data$sex == input$sex_select_comp
+                .data$time == input$time_select_comp
               ),
             ggplot2::aes(
               x = .data$age,
@@ -1666,8 +1825,7 @@ server_dev <- function(input, output, session) {
             ggplot2::geom_point(
               data = mig_comp_1_cols() %>%
                 dplyr::filter(
-                  .data$time == input$time_select_comp,
-                  .data$sex == input$sex_select_comp
+                  .data$time == input$time_select_comp
                 ), ggplot2::aes(y = .data[[input$compare_select_outs_1]]),
               col = "darkgreen",
               size = 0.3
@@ -1675,14 +1833,14 @@ server_dev <- function(input, output, session) {
             ggplot2::geom_point(
               data = mig_comp_2_cols() %>%
                 dplyr::filter(
-                  .data$time == input$time_select_comp,
-                  .data$sex == input$sex_select_comp
+                  .data$time == input$time_select_comp
                 ), ggplot2::aes(y = .data[[input$compare_select_outs_2]]),
               col = "darkblue",
               size = 0.3
             ) +
             ggplot2::ylab("") +
-            ggplot2::ggtitle("Emigration comparison")
+            ggplot2::ggtitle("Emigration comparison") +
+            ggplot2::facet_grid(cols = vars(.data$sex))
 
           plotly::ggplotly(p) # Convert to interactive plot
         } else if (nzchar(input$compare_select_outs_1) & (input$compare_select_outs_1 %in% colnames(mig_comp_1_cols())) &
@@ -1690,8 +1848,7 @@ server_dev <- function(input, output, session) {
           p <- ggplot2::ggplot(
             mig_res_comp() %>%
               dplyr::filter(
-                .data$time == input$time_select_comp,
-                .data$sex == input$sex_select_comp
+                .data$time == input$time_select_comp
               ),
             ggplot2::aes(
               x = .data$age,
@@ -1708,14 +1865,14 @@ server_dev <- function(input, output, session) {
             ggplot2::geom_point(
               data = mig_comp_1_cols() %>%
                 dplyr::filter(
-                  .data$time == input$time_select_comp,
-                  .data$sex == input$sex_select_comp
+                  .data$time == input$time_select_comp
                 ), ggplot2::aes(y = .data[[input$compare_select_outs_1]]),
               col = "darkgreen",
               size = 0.3
             ) +
             ggplot2::ylab("") +
-            ggplot2::ggtitle("Emigration comparison")
+            ggplot2::ggtitle("Emigration comparison") +
+            ggplot2::facet_grid(cols = vars(.data$sex))
 
           plotly::ggplotly(p) # Convert to interactive plot
         } else if (nzchar(input$compare_select_outs_2) & (input$compare_select_outs_2 %in% colnames(mig_comp_2_cols())) &
@@ -1723,8 +1880,7 @@ server_dev <- function(input, output, session) {
           p <- ggplot2::ggplot(
             mig_res_comp() %>%
               dplyr::filter(
-                .data$time == input$time_select_comp,
-                .data$sex == input$sex_select_comp
+                .data$time == input$time_select_comp
               ),
             ggplot2::aes(
               x = .data$age,
@@ -1741,14 +1897,14 @@ server_dev <- function(input, output, session) {
             ggplot2::geom_point(
               data = mig_comp_2_cols() %>%
                 dplyr::filter(
-                  .data$time == input$time_select_comp,
-                  .data$sex == input$sex_select_comp
+                  .data$time == input$time_select_comp
                 ), ggplot2::aes(y = .data[[input$compare_select_outs_2]]),
               col = "darkblue",
               size = 0.3
             ) +
             ggplot2::ylab("") +
-            ggplot2::ggtitle("Emigration comparison")
+            ggplot2::ggtitle("Emigration comparison") +
+            ggplot2::facet_grid(cols = vars(.data$sex))
 
           plotly::ggplotly(p) # Convert to interactive plot
         } else if (!nzchar(input$compare_select_outs_1) | !(input$compare_select_outs_1 %in% colnames(mig_comp_1_cols())) &
@@ -1757,8 +1913,7 @@ server_dev <- function(input, output, session) {
           p <- ggplot2::ggplot(
             mig_res_comp() %>%
               dplyr::filter(
-                .data$time == input$time_select_comp,
-                .data$sex == input$sex_select_comp
+                .data$time == input$time_select_comp
               ),
             ggplot2::aes(
               x = .data$age,
@@ -1773,12 +1928,127 @@ server_dev <- function(input, output, session) {
               position = ggplot2::position_dodge(width = 0.5)
             ) +
             ggplot2::ylab("") +
-            ggplot2::ggtitle("Emigration comparison")
+            ggplot2::ggtitle("Emigration comparison") +
+            ggplot2::facet_grid(cols = vars(.data$sex))
 
           plotly::ggplotly(p) # Convert to interactive plot
         }
       }
     })
+
+
+    output$compPlotsImmigResiduals <- shiny::renderUI({
+      plotly::plotlyOutput(outputId = "comparing_immig_residuals")
+    })
+
+    output$comparing_immig_residuals <- plotly::renderPlotly({
+      req(input$time_select_comp, input$residual_type)
+
+      if (input$residual_type == "Absolute") {
+        p <- ggplot2::ggplot(
+          mig_res_comp_wide() %>%
+            dplyr::filter(
+              .data$time == input$time_select_comp
+            ),
+          ggplot2::aes(
+            x = .data$age,
+            y = .data$ins_residuals_abs
+          )
+        ) +
+          ggplot2::geom_segment(
+            ggplot2::aes(xend = .data$age, yend = 0)
+          ) +
+          ggplot2::geom_point(
+            size = 2
+          ) +
+          ggplot2::xlab("Age") +
+          ggplot2::ylab("Absolute Difference (Setup 2 - Setup 1)") +
+          ggplot2::ggtitle("Immigration Comparison Residuals (Absolute)") +
+          ggplot2::facet_grid(cols = vars(.data$sex))
+
+        plotly::ggplotly(p) # Convert to interactive plot
+      } else if (input$residual_type == "Percent") {
+        p <- ggplot2::ggplot(
+          mig_res_comp_wide() %>%
+            dplyr::filter(
+              .data$time == input$time_select_comp
+            ),
+          ggplot2::aes(
+            x = .data$age,
+            y = .data$ins_residuals_perc
+          )
+        ) +
+          ggplot2::geom_segment(
+            ggplot2::aes(xend = .data$age, yend = 0)
+          ) +
+          ggplot2::geom_point(
+            size = 2
+          ) +
+          ggplot2::xlab("Age") +
+          ggplot2::ylab("Percent Difference (Setup 2 - Setup 1)") +
+          ggplot2::ggtitle("Immigration Comparison Residuals (Percent)") +
+          ggplot2::facet_grid(cols = vars(.data$sex))
+
+        plotly::ggplotly(p) # Convert to interactive plot
+      }
+    })
+
+    output$compPlotsEmigResiduals <- shiny::renderUI({
+      plotly::plotlyOutput(outputId = "comparing_emig_residuals")
+    })
+
+    output$comparing_emig_residuals <- plotly::renderPlotly({
+      req(input$time_select_comp, input$residual_type)
+
+      if (input$residual_type == "Absolute") {
+        p <- ggplot2::ggplot(
+          mig_res_comp_wide() %>%
+            dplyr::filter(
+              .data$time == input$time_select_comp
+            ),
+          ggplot2::aes(
+            x = .data$age,
+            y = .data$outs_residuals_abs
+          )
+        ) +
+          ggplot2::geom_segment(
+            ggplot2::aes(xend = .data$age, yend = 0)
+          ) +
+          ggplot2::geom_point(
+            size = 2
+          ) +
+          ggplot2::xlab("Age") +
+          ggplot2::ylab("Absolute Difference (Setup 2 - Setup 1)") +
+          ggplot2::ggtitle("Emigration Comparison Residuals (Absolute)") +
+          ggplot2::facet_grid(cols = vars(.data$sex))
+
+        plotly::ggplotly(p) # Convert to interactive plot
+      } else if (input$residual_type == "Percent") {
+        p <- ggplot2::ggplot(
+          mig_res_comp_wide() %>%
+            dplyr::filter(
+              .data$time == input$time_select_comp
+            ),
+          ggplot2::aes(
+            x = .data$age,
+            y = .data$outs_residuals_perc
+          )
+        ) +
+          ggplot2::geom_segment(
+            ggplot2::aes(xend = .data$age, yend = 0)
+          ) +
+          ggplot2::geom_point(
+            size = 2
+          ) +
+          ggplot2::xlab("Age") +
+          ggplot2::ylab("Percent Difference (Setup 2 - Setup 1)") +
+          ggplot2::ggtitle("Emigration Comparison Residuals (Percent)") +
+          ggplot2::facet_grid(cols = vars(.data$sex))
+
+        plotly::ggplotly(p) # Convert to interactive plot
+      }
+    })
+
 
     output$compAggPop <- shiny::renderUI({
       plotly::plotlyOutput(outputId = "comparing_agg_pop")
@@ -1801,7 +2071,7 @@ server_dev <- function(input, output, session) {
         ) +
         ggplot2::ylab("") +
         ggplot2::ggtitle("Aggregate population comparison") +
-        ggplot2::facet_grid(rows = vars(.data$sex))
+        ggplot2::facet_grid(cols = vars(.data$sex))
 
       plotly::ggplotly(p)
     })
@@ -1831,7 +2101,7 @@ server_dev <- function(input, output, session) {
         ) +
         ggplot2::ylab("") +
         ggplot2::ggtitle("Aggregate immigration comparison") +
-        ggplot2::facet_grid(rows = vars(.data$sex))
+        ggplot2::facet_grid(cols = vars(.data$sex))
 
       plotly::ggplotly(p)
     })
@@ -1859,7 +2129,7 @@ server_dev <- function(input, output, session) {
         ) +
         ggplot2::ylab("") +
         ggplot2::ggtitle("Aggregate emigration comparison") +
-        ggplot2::facet_grid(rows = vars(.data$sex))
+        ggplot2::facet_grid(cols = vars(.data$sex))
 
       plotly::ggplotly(p)
     })
@@ -1888,9 +2158,260 @@ server_dev <- function(input, output, session) {
         ) +
         ggplot2::ylab("") +
         ggplot2::ggtitle("Aggregate net-migration comparison") +
-        ggplot2::facet_grid(rows = vars(.data$sex))
+        ggplot2::facet_grid(cols = vars(.data$sex))
 
       plotly::ggplotly(p)
+    })
+
+
+
+    output$compAggPopDiffs <- shiny::renderUI({
+      plotly::plotlyOutput(outputId = "comparing_agg_pop_diffs")
+    })
+    output$comparing_agg_pop_diffs <- plotly::renderPlotly({
+      pop_aggs <- pop_res_comp() %>%
+        group_by(.data$time, .data$sex, .data$setup) %>%
+        summarise(agg_pop = sum(.data$population.fitted))
+
+      pop_aggs_wide <- merge(.data$pop_aggs %>% dplyr::filter(.data$setup == 1) %>% dplyr::mutate(agg_pop1 = .data$agg_pop),
+        .data$pop_aggs %>% dplyr::filter(.data$setup == 2) %>% mutate(agg_pop2 = .data$agg_pop),
+        by = c("sex", "time")
+      )
+
+      pop_aggs_wide <- .data$pop_aggs_wide %>% dplyr::mutate(
+        agg_pop_diffs_abs = .data$agg_pop2 - .data$agg_pop1,
+        agg_pop_diffs_perc = 100 * (.data$agg_pop_diffs_abs / .data$agg_pop1)
+      )
+
+      p1 <- ggplot2::ggplot(
+        .data$pop_aggs_wide,
+        ggplot2::aes(
+          x = .data$time,
+          y = .data$agg_pop_diffs_abs
+        )
+      ) +
+        ggplot2::geom_segment(
+          ggplot2::aes(xend = .data$time, yend = 0)
+        ) +
+        ggplot2::geom_point(
+          size = 2
+        ) +
+        ggplot2::facet_grid(cols = vars(.data$sex))
+
+      plotly1 <- plotly::ggplotly(p1)
+
+      p2 <- ggplot2::ggplot(
+        .data$pop_aggs_wide,
+        ggplot2::aes(
+          x = .data$time,
+          y = .data$agg_pop_diffs_perc
+        )
+      ) +
+        ggplot2::geom_segment(
+          ggplot2::aes(xend = .data$time, yend = 0)
+        ) +
+        ggplot2::geom_point(
+          size = 2
+        ) +
+        ggplot2::facet_grid(cols = vars(.data$sex))
+
+      plotly2 <- plotly::ggplotly(p2)
+
+      annotations <- list(
+        list(x = 0.25, y = 1.0, text = "Absolute", xref = "paper", yref = "paper", xanchor = "center", yanchor = "bottom", showarrow = FALSE),
+        list(x = 0.75, y = 1.0, text = "Percent", xref = "paper", yref = "paper", xanchor = "center", yanchor = "bottom", showarrow = FALSE)
+      )
+
+      plotly::subplot(plotly1, plotly2) %>% layout(title = "Aggregate Population Comparison Residuals", annotations = annotations)
+    })
+
+
+    output$compAggImmigDiffs <- shiny::renderUI({
+      plotly::plotlyOutput(outputId = "comparing_agg_immig_diffs")
+    })
+    output$comparing_agg_immig_diffs <- plotly::renderPlotly({
+      event_aggs <- mig_res_comp() %>%
+        group_by(.data$time, .data$sex, .data$setup) %>%
+        summarise(
+          agg_ins = sum(.data$ins.fitted)
+        )
+
+      mig_aggs_wide <- merge(.data$event_aggs %>% dplyr::filter(.data$setup == 1) %>% dplyr::mutate(agg_ins1 = .data$agg_ins),
+                             .data$event_aggs %>% dplyr::filter(.data$setup == 2) %>% dplyr::mutate(agg_ins2 = .data$agg_ins),
+        by = c("sex", "time")
+      )
+
+      mig_aggs_wide <- .data$mig_aggs_wide %>% dplyr::mutate(
+        agg_ins_diffs_abs = .data$agg_ins2 - .data$agg_ins1,
+        agg_ins_diffs_perc = 100 * (.data$agg_ins_diffs_abs / .data$agg_ins1)
+      )
+
+      p1 <- ggplot2::ggplot(
+        .data$mig_aggs_wide,
+        ggplot2::aes(
+          x = .data$time,
+          y = .data$agg_ins_diffs_abs
+        )
+      ) +
+        ggplot2::geom_segment(
+          ggplot2::aes(xend = .data$time, yend = 0)
+        ) +
+        ggplot2::geom_point(
+          size = 2
+        ) +
+        ggplot2::facet_grid(cols = vars(.data$sex))
+
+      plotly1 <- plotly::ggplotly(p1)
+
+      p2 <- ggplot2::ggplot(
+        mig_aggs_wide,
+        ggplot2::aes(
+          x = .data$time,
+          y = .data$agg_ins_diffs_perc
+        )
+      ) +
+        ggplot2::geom_segment(
+          ggplot2::aes(xend = .data$time, yend = 0)
+        ) +
+        ggplot2::geom_point(
+          size = 2
+        ) +
+        ggplot2::facet_grid(cols = vars(.data$sex))
+
+      plotly2 <- plotly::ggplotly(p2)
+
+      annotations <- list(
+        list(x = 0.25, y = 1.0, text = "Absolute", xref = "paper", yref = "paper", xanchor = "center", yanchor = "bottom", showarrow = FALSE),
+        list(x = 0.75, y = 1.0, text = "Percent", xref = "paper", yref = "paper", xanchor = "center", yanchor = "bottom", showarrow = FALSE)
+      )
+
+      plotly::subplot(plotly1, plotly2) %>% plotly::layout(title = "Aggregate Immigration Comparison Residuals", annotations = annotations)
+    })
+
+
+
+    output$compAggEmigDiffs <- shiny::renderUI({
+      plotly::plotlyOutput(outputId = "comparing_agg_emig_diffs")
+    })
+    output$comparing_agg_emig_diffs <- plotly::renderPlotly({
+      event_aggs <- mig_res_comp() %>%
+        dplyr::group_by(.data$time, .data$sex, .data$setup) %>%
+        dplyr::summarise(
+          agg_outs = sum(.data$outs.fitted)
+        )
+      mig_aggs_wide <- dplyr::merge(.data$event_aggs %>% dplyr::filter(.data$setup == 1) %>% dplyr::mutate(agg_outs1 = .data$agg_outs),
+        .data$event_aggs %>% dplyr::filter(.data$setup == 2) %>% dplyr::mutate(agg_outs2 = .data$agg_outs),
+        by = c("sex", "time")
+      )
+
+      mig_aggs_wide <- mig_aggs_wide %>% mutate(
+        agg_outs_diffs_abs = .data$agg_outs2 - .data$agg_outs1,
+        agg_outs_diffs_perc = 100 * (.data$agg_outs_diffs_abs / .data$agg_outs1)
+      )
+
+      p1 <- ggplot2::ggplot(
+        .data$mig_aggs_wide,
+        ggplot2::aes(
+          x = .data$time,
+          y = .data$agg_outs_diffs_abs
+        )
+      ) +
+        ggplot2::geom_segment(
+          ggplot2::aes(xend = .data$time, yend = 0)
+        ) +
+        ggplot2::geom_point(
+          size = 2
+        ) +
+        ggplot2::facet_grid(cols = vars(.data$sex))
+
+      plotly1 <- plotly::ggplotly(p1)
+
+      p2 <- ggplot2::ggplot(
+        mig_aggs_wide,
+        ggplot2::aes(
+          x = .data$time,
+          y = .data$agg_outs_diffs_perc
+        )
+      ) +
+        ggplot2::geom_segment(
+          ggplot2::aes(xend = .data$time, yend = 0)
+        ) +
+        ggplot2::geom_point(
+          size = 2
+        ) +
+        ggplot2::facet_grid(cols = vars(.data$sex))
+
+      plotly2 <- plotly::ggplotly(p2)
+
+      annotations <- list(
+        list(x = 0.25, y = 1.0, text = "Absolute", xref = "paper", yref = "paper", xanchor = "center", yanchor = "bottom", showarrow = FALSE),
+        list(x = 0.75, y = 1.0, text = "Percent", xref = "paper", yref = "paper", xanchor = "center", yanchor = "bottom", showarrow = FALSE)
+      )
+
+      plotly::subplot(plotly1, plotly2) %>% layout(title = "Aggregate Emigration Comparison Residuals", annotations = annotations)
+    })
+
+    output$compAggNetMigDiffs <- shiny::renderUI({
+      plotly::plotlyOutput(outputId = "comparing_agg_netmig_diffs")
+    })
+    output$comparing_agg_netmig_diffs <- plotly::renderPlotly({
+      event_aggs <- mig_res_comp() %>%
+        group_by(.data$time, .data$sex, .data$setup) %>%
+        summarise(
+          agg_ins = sum(.data$ins.fitted),
+          agg_outs = sum(.data$outs.fitted),
+          agg_netmig = .data$agg_ins - .data$agg_outs
+        )
+      mig_aggs_wide <- merge(.data$event_aggs %>% dplyr::filter(.data$setup == 1) %>% dplyr::mutate(agg_netmig1 = .data$agg_netmig),
+        .data$event_aggs %>% dplyr::filter(.data$setup == 2) %>% dplyr::mutate(agg_netmig2 = .data$agg_netmig),
+        by = c("sex", "time")
+      )
+
+      mig_aggs_wide <- .data$mig_aggs_wide %>% dplyr::mutate(
+        agg_netmig_diffs_abs = .data$agg_netmig2 - .data$agg_netmig1,
+        agg_netmig_diffs_perc = 100 * (.data$agg_netmig_diffs_abs / .data$agg_netmig1)
+      )
+
+      p1 <- ggplot2::ggplot(
+        .data$mig_aggs_wide,
+        ggplot2::aes(
+          x = .data$time,
+          y = .data$agg_netmig_diffs_abs
+        )
+      ) +
+        ggplot2::geom_segment(
+          ggplot2::aes(xend = .data$time, yend = 0)
+        ) +
+        ggplot2::geom_point(
+          size = 2
+        ) +
+        ggplot2::facet_grid(cols = vars(.data$sex))
+
+      plotly1 <- plotly::ggplotly(p1)
+
+      p2 <- ggplot2::ggplot(
+        .data$mig_aggs_wide,
+        ggplot2::aes(
+          x = .data$time,
+          y = .data$agg_netmig_diffs_perc
+        )
+      ) +
+        ggplot2::geom_segment(
+          ggplot2::aes(xend = .data$time, yend = 0)
+        ) +
+        ggplot2::geom_point(
+          size = 2
+        ) +
+        ggplot2::facet_grid(cols = vars(.data$sex))
+
+      plotly2 <- plotly::ggplotly(p2)
+
+      annotations <- list(
+        list(x = 0.25, y = 1.0, text = "Absolute", xref = "paper", yref = "paper", xanchor = "center", yanchor = "bottom", showarrow = FALSE),
+        list(x = 0.75, y = 1.0, text = "Percent", xref = "paper", yref = "paper", xanchor = "center", yanchor = "bottom", showarrow = FALSE)
+      )
+
+      plotly::subplot(plotly1, plotly2) %>% plotly::layout(title = "Aggregate Net-Migration Comparison Residuals", annotations = annotations)
     })
   })
 }

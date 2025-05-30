@@ -78,6 +78,7 @@ create_data_model_region <- function(
 #' @param lower_rates_limit (Optional) A numerical lower limit to apply to the rate being used to create the system model
 #' @param rate_scaler (Optional) A numeric scaler term to apply to the raw rate in the rates_df
 #' @param rate_overide (Optional) A numeric rate to impute to all cells, default to -1 to not apply and use raw rate
+#' @param rate_noise (Optional) A numeric noise term to apply to t he raw rate in the rates_df (as a % of the raw rate e.g. rate_noise = 0.1 is equal to 10% noise)
 #'
 #' @return
 #' An object of class `accountTMB_sysmod` representing the created system model. This object can be used in subsequent accountTMB analyses.
@@ -91,18 +92,14 @@ create_data_model_region <- function(
 #' my_sysmod <- create_system_model(model_name = "births", rates_df = my_rates_df, disp = 0.05)
 #'
 #' @export
-create_system_model <- function(model_name,
-                                rates_df,
-                                disp,
-                                time_selection = NULL,
-                                lower_rates_limit = 0,
-                                rate_scaler = 1,
-                                rate_overide = -1) {
+create_system_model <- function(model_name, rates_df, disp, time_selection = NULL, lower_rates_limit = 0, rate_scaler = 1, rate_overide = -1, rate_noise = 0) {
   if (!is.null(time_selection)) {
     rates_df <- rates_df[rates_df$time %in% time_selection, ]
   }
 
   sysmod_mean <- tibble::as_tibble(rates_df %>%
+    # dplyr::mutate(rate = rate + stats::runif(n(), min = -rate_noise, max = rate_noise) * rate) %>%
+    dplyr::mutate(rate = .data$rate + stats::rnorm(n(), mean = 0, sd = rate_noise) * .data$rate) %>%
     dplyr::mutate(rate = ifelse(.data$rate < lower_rates_limit,
       lower_rates_limit,
       .data$rate * rate_scaler
