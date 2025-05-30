@@ -25,7 +25,7 @@ if applicable additional notes on particular areas to focus the review
 #### Install directly from GitHub
 
 If you have linked your RStudio installation to GitHub you should be
-able to install the package directly from GitHub using the
+able to install the package directly from GitHub using the\
 install_github method from the devtools package
 
 ``` r
@@ -66,6 +66,9 @@ dpm_dash_build <- devtools::build("~/put/the/package/path/here")
 
 devtools::install_local(dpm_dash_build, build_vignettes = TRUE, INSTALL_opts = "--no-multiarch")
 ```
+
+### Run without installing
+To run without installing, first add artifactory details to the renv.lock file (under CRAN00) in repositories (don't commit these details!). Once added, use `renv::restore()` to install required packages. Then, install [accountTMB](https://github.com/ONSdigital/accountTMB). Then, `source(app.r)` and you should be ready to run the correct version of the dashboard.
 
 ### Usage (example)
 
