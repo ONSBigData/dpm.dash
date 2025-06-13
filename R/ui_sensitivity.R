@@ -190,14 +190,20 @@ ui_sens <- shinydashboard::dashboardPage(
                   # Box for optional inputs, collapsible.
                   shinydashboard::box(
                     title = "Optional", width = 12, collapsible = TRUE, collapsed = TRUE, # Initially collapsed.
+                    # Input for age targeted changes
+                    shiny::textInput(paste0(model, "_age_target"), paste("Optional: ", model, " Age Target"), value = "0:105"),
+                    # Input for time targeted changes
+                    shiny::textInput(paste0(model, "_sex_target"), paste("Optional: ", model, " Sex Target"), value = "Male, Female"),
+                    # Input for sex targeted changes
+                    shiny::textInput(paste0(model, "_time_target"), paste("Optional: ", model, " Time Target"), value = "all"),
                     # Numeric input for lower rate limit.
-                    numericInput(paste0(model, "_lower_rate_limit"), paste("Optional: ", model, " Lower Rate Limit"), value = 1e-6),
+                    shiny::numericInput(paste0(model, "_lower_rate_limit"), paste("Optional: ", model, " Lower Rate Limit"), value = 1e-6),
                     # Slider input for rate scaler.
-                    sliderInput(paste0(model, "_rate_scale"), paste("Optional: ", model, " Rate Scaler"), value = 1, min = 0, max = 3, step = 0.1),
+                    shiny::sliderInput(paste0(model, "_rate_scale"), paste("Optional: ", model, " Rate Scaler"), value = 1, min = 0, max = 3, step = 0.1),
                     # Numeric input for rate override.
-                    numericInput(paste0(model, "_rate_overide"), paste("Optional: ", model, " Rate Set"), value = -1),
+                    shiny::numericInput(paste0(model, "_rate_overide"), paste("Optional: ", model, " Rate Set"), value = -1),
                     # Numeric input for rate noise.
-                    numericInput(paste0(model, "_rate_noise"), paste("Optional: ", model, " Noise Set"), value = 0)
+                    shiny::numericInput(paste0(model, "_rate_noise"), paste("Optional: ", model, " Noise Set"), value = 0)
                   )
                 )
               )
@@ -491,7 +497,7 @@ ui_sens <- shinydashboard::dashboardPage(
             shiny::uiOutput("compAggPopDiffs"),
             shiny::uiOutput("compAggImmigDiffs"),
             shiny::uiOutput("compAggEmigDiffs")
-            # shiny::uiOutput("compAggNetMigDiffs") # This line is commented out in the original code.
+            # shiny::uiOutput("compAggNetMigDiffs") #
           )
         )
       ),
@@ -561,6 +567,29 @@ ui_sens <- shinydashboard::dashboardPage(
             )
           )
         ),
+        shiny::fluidRow(
+          shinydashboard::box(
+            title = "Specific Targeting Parameters", width = 12, solidHeader = TRUE, status = "primary",
+            shiny::p("Select some targeting parameters to test specific combinations of age/sex/time."),
+            shiny::fluidRow(
+              column(
+                4,
+                # Input for age targeted changes
+                shiny::textInput(paste0("sa", "_age_target"), paste("Optional: Age Target"), value = "0:105")
+              ),
+              column(
+                4,
+                # Input for time targeted changes
+                shiny::textInput(paste0("sa", "_sex_target"), paste("Optional: Sex Target"), value = "Male, Female")
+              ),
+              column(
+                4,
+                # Input for sex targeted changes
+                shiny::textInput(paste0("sa", "_time_target"), paste("Optional: Time Target"), value = "all")
+              )
+            )
+          )
+        ),
         # Row for specifying parameters to vary for sensitivity analysis.
         shiny::fluidRow(
           # Box for system model parameter sensitivity.
@@ -607,6 +636,18 @@ ui_sens <- shinydashboard::dashboardPage(
             shiny::actionButton("run_sensitivity_analysis", "Run Sensitivity Analysis", icon = icon("cogs")), # Button to start the analysis.
             shiny::hr(), # Horizontal rule for separation.
             shiny::textOutput("sensitivity_run_status") # Text output for displaying run status or feedback.
+          )
+        ),
+        # Row for displaying aggregate estimate comparisons.
+        shiny::fluidRow(
+          shinydashboard::box(
+            title = "Sensitivity Analysis Aggregate Estimates Comparisons", width = 12, solidHeader = TRUE, status = "primary",
+            # UI outputs for various aggregate comparison plots/tables.
+            shiny::uiOutput("SAcompAggPop"),
+            shiny::uiOutput("SAcompAggImmig"),
+            shiny::uiOutput("SAcompAggEmig"),
+            shiny::uiOutput("SAcompAggNetMig")
+            # shiny::uiOutput("compAggNetMigDiffs") #
           )
         )
       ),

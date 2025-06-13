@@ -62,7 +62,7 @@ server_sens <- function(input, output, session) {
     global_config(list(
       data_dir = if (nzchar(input$global_data_dir)) input$global_data_dir else default_data_dir, # Use user input or default for data directory.
       output_dir = if (nzchar(input$global_output_dir)) input$global_output_dir else default_output_dir, # Use user input or default for output directory.
-      time_selection = if (nzchar(input$global_time_selection)) as.integer(unlist(strsplit(input$global_time_selection, ","))) else NULL, # Parse comma-separated time selection string to integer vector.
+      time_selection = if (nzchar(input$global_time_selection)) parse_values(input$global_time_selection) else NULL, # Parse comma-separated time selection string to integer vector.
       seed_value = if (nzchar(input$global_seed_value)) as.integer(input$global_seed_value) else default_seed_value # Use user input or default for seed value.
     ))
     # Display a modal dialog to confirm that the global configuration has been saved.
@@ -125,6 +125,9 @@ server_sens <- function(input, output, session) {
       rate_overide_val <- input[[paste0(model, "_rate_overide")]]
       rate_noise_val <- input[[paste0(model, "_rate_noise")]]
       time_selection_val <- global_config()$time_selection # Use global time selection if specified.
+      age_target <- input[[paste0(model, "_age_target")]]
+      sex_target <- input[[paste0(model, "_sex_target")]]
+      time_target <- input[[paste0(model, "_time_target")]]
 
       # Check if the 'create_system_model' function (assumed to be from the 'accountTMB' package or defined elsewhere) exists.
       if (!exists("create_system_model") || !is.function(create_system_model)) {
@@ -135,7 +138,8 @@ server_sens <- function(input, output, session) {
       # This function is expected to handle the provided rates, dispersion, and optional parameters.
       create_system_model(
         model, rates_df, disp_val_or_df, time_selection_val,
-        lower_rates_limit_val, rate_scaler_val, rate_overide_val, rate_noise_val
+        lower_rates_limit_val, rate_scaler_val, rate_overide_val, rate_noise_val,
+        age_target, sex_target, time_target
       )
     })
 
@@ -1489,10 +1493,83 @@ server_sens <- function(input, output, session) {
     plotly::ggplotly(p)
   })
 
+  output$compAggImmig <- shiny::renderUI({
+    plotly::plotlyOutput("comparing_agg_immig_plot")
+  })
+  output$comparing_agg_immig_plot <- plotly::renderPlotly({
+    res <- comparison_results()
+    req(res, res$mig_combined)
+    # Aggregate total immigration by time, sex, and setup.
+    immig_aggs <- res$mig_combined %>%
+      dplyr::group_by(.data$time, .data$sex, .data$setup) %>%
+      dplyr::summarise(agg_immig = sum(.data$ins.fitted, na.rm = TRUE), .groups = "drop")
+    p <- ggplot2::ggplot(immig_aggs, ggplot2::aes(x = .data$time, y = .data$agg_immig, color = .data$setup)) +
+      ggplot2::geom_line() +
+      ggplot2::geom_point(size = 2) +
+      ggplot2::facet_grid(cols = ggplot2::vars(.data$sex)) +
+      ggplot2::labs(title = "Aggregate Immigration Comparison Over Time", y = "Total Immigration", x = "Time") +
+      ggplot2::theme_minimal()
+    plotly::ggplotly(p)
+  })
+
+  output$compAggEmig <- shiny::renderUI({
+    plotly::plotlyOutput("comparing_agg_emig_plot")
+  })
+  output$comparing_agg_emig_plot <- plotly::renderPlotly({
+    res <- comparison_results()
+    req(res, res$mig_combined)
+    # Aggregate total emigration by time, sex, and setup.
+    emig_aggs <- res$mig_combined %>%
+      dplyr::group_by(.data$time, .data$sex, .data$setup) %>%
+      dplyr::summarise(agg_emig = sum(.data$outs.fitted, na.rm = TRUE), .groups = "drop")
+    p <- ggplot2::ggplot(emig_aggs, ggplot2::aes(x = .data$time, y = .data$agg_emig, color = .data$setup)) +
+      ggplot2::geom_line() +
+      ggplot2::geom_point(size = 2) +
+      ggplot2::facet_grid(cols = ggplot2::vars(.data$sex)) +
+      ggplot2::labs(title = "Aggregate Emigration Comparison Over Time", y = "Total Emigration", x = "Time") +
+      ggplot2::theme_minimal()
+    plotly::ggplotly(p)
+  })
+
   # Placeholder for other aggregate plots (Immigration, Emigration, Net Migration, and their differences).
   # These would follow a similar pattern: group_by relevant variables, summarise the metric (e.g., sum of ins.fitted),
   # then plot over time, often faceted by sex and colored by setup.
   # For difference plots, data would be pivoted wider to calculate differences between setups.
+
+  output$compAggPopDiffs <- shiny::renderUI({
+    plotly::plotlyOutput("comparing_agg_pop_diffs_plot")
+  })
+  output$comparing_agg_pop_diffs_plot <- plotly::renderPlotly({
+    res <- comparison_results()
+    req(res, res$pop_combined)
+    pop_aggs_diff <- res$pop_combined %>%
+      dplyr::group_by(.data$time, .data$sex, .data$setup) %>%
+      dplyr::summarise(agg_pop = sum(.data$population.fitted, na.rm = TRUE), .groups = "drop") %>%
+      tidyr::pivot_wider(names_from = .data$setup, values_from = .data$agg_pop, names_prefix = "agg_pop_") %>% # Pivot to wide format.
+      # Ensure columns for "Setup 1" and "Setup 2" exist before trying to subtract.
+      # The actual column names will be 'agg_ins_Setup 1' and 'agg_ins_Setup 2' due to names_prefix.
+      dplyr::mutate(
+        abs_diff = .data$`agg_pop_Setup 2` - .data$`agg_pop_Setup 1`,
+        perc_diff = ifelse(.data$`agg_pop_Setup 1` == 0, NA, 100 * .data$abs_diff / .data$`agg_pop_Setup 1`)
+      )
+
+    # Prepare for plotting both absolute and percent differences in one go using faceting.
+    p1_data <- pop_aggs_diff %>%
+      dplyr::select(.data$time, .data$sex, value = .data$abs_diff) %>%
+      dplyr::mutate(type = "Absolute Difference")
+    p2_data <- pop_aggs_diff %>%
+      dplyr::select(.data$time, .data$sex, value = .data$perc_diff) %>%
+      dplyr::mutate(type = "Percent Difference")
+    plot_data_long <- dplyr::bind_rows(p1_data, p2_data) %>% tidyr::drop_na(.data$value) # Combine and remove NAs.
+
+    p <- ggplot2::ggplot(plot_data_long, ggplot2::aes(x = .data$time, y = .data$value)) +
+      ggplot2::geom_segment(ggplot2::aes(xend = .data$time, yend = 0)) +
+      ggplot2::geom_point(size = 2) +
+      ggplot2::facet_grid(type ~ sex, scales = "free_y") + # Free y-scale for abs vs. perc.
+      ggplot2::labs(title = "Aggregate Population Comparison: Differences (Setup 2 - Setup 1)", y = "Difference Value", x = "Time") +
+      ggplot2::theme_minimal()
+    plotly::ggplotly(p)
+  })
 
   # Example for Aggregate Immigration Differences plot:
   output$compAggImmigDiffs <- shiny::renderUI({
@@ -1526,6 +1603,41 @@ server_sens <- function(input, output, session) {
       ggplot2::geom_point(size = 2) +
       ggplot2::facet_grid(type ~ sex, scales = "free_y") + # Free y-scale for abs vs. perc.
       ggplot2::labs(title = "Aggregate Immigration Comparison: Differences (Setup 2 - Setup 1)", y = "Difference Value", x = "Time") +
+      ggplot2::theme_minimal()
+    plotly::ggplotly(p)
+  })
+
+  output$compAggEmigDiffs <- shiny::renderUI({
+    plotly::plotlyOutput("comparing_agg_emig_diffs_plot")
+  })
+  output$comparing_agg_emig_diffs_plot <- plotly::renderPlotly({
+    res <- comparison_results()
+    req(res, res$mig_combined)
+    mig_aggs_diff <- res$mig_combined %>%
+      dplyr::group_by(.data$time, .data$sex, .data$setup) %>%
+      dplyr::summarise(agg_outs = sum(.data$outs.fitted, na.rm = TRUE), .groups = "drop") %>%
+      tidyr::pivot_wider(names_from = .data$setup, values_from = .data$agg_outs, names_prefix = "agg_outs_") %>% # Pivot to wide format.
+      # Ensure columns for "Setup 1" and "Setup 2" exist before trying to subtract.
+      # The actual column names will be 'agg_ins_Setup 1' and 'agg_ins_Setup 2' due to names_prefix.
+      dplyr::mutate(
+        abs_diff = .data$`agg_outs_Setup 2` - .data$`agg_outs_Setup 1`,
+        perc_diff = ifelse(.data$`agg_outs_Setup 1` == 0, NA, 100 * .data$abs_diff / .data$`agg_outs_Setup 1`)
+      )
+
+    # Prepare for plotting both absolute and percent differences in one go using faceting.
+    p1_data <- mig_aggs_diff %>%
+      dplyr::select(.data$time, .data$sex, value = .data$abs_diff) %>%
+      dplyr::mutate(type = "Absolute Difference")
+    p2_data <- mig_aggs_diff %>%
+      dplyr::select(.data$time, .data$sex, value = .data$perc_diff) %>%
+      dplyr::mutate(type = "Percent Difference")
+    plot_data_long <- dplyr::bind_rows(p1_data, p2_data) %>% tidyr::drop_na(.data$value) # Combine and remove NAs.
+
+    p <- ggplot2::ggplot(plot_data_long, ggplot2::aes(x = .data$time, y = .data$value)) +
+      ggplot2::geom_segment(ggplot2::aes(xend = .data$time, yend = 0)) +
+      ggplot2::geom_point(size = 2) +
+      ggplot2::facet_grid(type ~ sex, scales = "free_y") + # Free y-scale for abs vs. perc.
+      ggplot2::labs(title = "Aggregate Emigration Comparison: Differences (Setup 2 - Setup 1)", y = "Difference Value", x = "Time") +
       ggplot2::theme_minimal()
     plotly::ggplotly(p)
   })
@@ -1568,6 +1680,11 @@ server_sens <- function(input, output, session) {
   # Observer to update the 'sa_datamod_param_select' dropdown.
   # This lists parameters available for variation based on the *type* of the
   # data model selected in 'sa_datamod_name_select'.
+  observe({
+    req(input$sa_datamod_name_select == "None")
+    updateSelectInput(session, "sa_datamod_param_select", choices = c("None"), selected = "None")
+  })
+
   observe({
     req(input$sa_datamod_name_select, input$sa_datamod_name_select != "None")
     selected_dm_object <- datamod_list()[[input$sa_datamod_name_select]] # Get the actual data model object.
@@ -1788,7 +1905,14 @@ server_sens <- function(input, output, session) {
             if ("mean" %in% names(target_sm_component_obj) && (is.data.frame(target_sm_component_obj$mean) || inherits(target_sm_component_obj$mean, "Counts"))) {
               rates_data <- as.data.frame(target_sm_component_obj$mean)
               rate_col_name <- if ("rate" %in% names(rates_data)) "rate" else if ("mean" %in% names(rates_data)) "mean" else NULL
-              if (!is.null(rate_col_name)) rates_data[[rate_col_name]] <- rates_data[[rate_col_name]] * current_param_value else warning("Rate column not found for rate_scale.")
+              # if (!is.null(rate_col_name)) rates_data[[rate_col_name]] <- rates_data[[rate_col_name]] * current_param_value else warning("Rate column not found for rate_scale.")
+              if (!is.null(rate_col_name)) {
+                if (input$sa_time_target == "all") {
+                  rates_data <- rates_data %>% mutate(across(all_of(rate_col_name), ~ ifelse(age %in% parse_values(input$sa_age_target) & sex %in% parse_values(input$sa_sex_target), .x * current_param_value, .x)))
+                } else {
+                  rates_data <- rates_data %>% mutate(across(all_of(rate_col_name), ~ ifelse(age %in% parse_values(input$sa_age_target) & sex %in% parse_values(input$sa_sex_target) & time %in% parse_values(input$sa_time_target), .x * current_param_value, .x)))
+                }
+              }
               target_sm_component_obj$mean <- rates_data
             } else {
               warning(paste("Cannot apply rate_scale to mean of", sys_model_component_to_vary))
@@ -1797,7 +1921,14 @@ server_sens <- function(input, output, session) {
             if ("mean" %in% names(target_sm_component_obj) && (is.data.frame(target_sm_component_obj$mean) || inherits(target_sm_component_obj$mean, "Counts"))) {
               rates_data <- as.data.frame(target_sm_component_obj$mean)
               rate_col_name <- if ("rate" %in% names(rates_data)) "rate" else if ("mean" %in% names(rates_data)) "mean" else NULL
-              if (!is.null(rate_col_name)) rates_data[[rate_col_name]] <- rates_data[[rate_col_name]] + (stats::rnorm(length(rates_data[[rate_col_name]]), mean = 0, sd = current_param_value) * rates_data[[rate_col_name]]) else warning("Rate column not found for rate_noise.")
+              # if (!is.null(rate_col_name)) rates_data[[rate_col_name]] <- rates_data[[rate_col_name]] + (stats::rnorm(length(rates_data[[rate_col_name]]), mean = 0, sd = current_param_value) * rates_data[[rate_col_name]]) else warning("Rate column not found for rate_noise.")
+              if (!is.null(rate_col_name)) {
+                if (input$sa_time_target == "all") {
+                  rates_data <- rates_data %>% mutate(across(all_of(rate_col_name), ~ ifelse(age %in% parse_values(input$sa_age_target) & sex %in% parse_values(input$sa_sex_target), .x + (stats::rnorm(length(.x), mean = 0, sd = current_param_value) * .x), .x)))
+                } else {
+                  rates_data <- rates_data %>% mutate(across(all_of(rate_col_name), ~ ifelse(age %in% parse_values(input$sa_age_target) & sex %in% parse_values(input$sa_sex_target) & time %in% parse_values(input$sa_time_target), .x, .x)))
+                }
+              }
               target_sm_component_obj$mean <- rates_data
             } else {
               warning(paste("Cannot apply rate_noise to mean of", sys_model_component_to_vary))
@@ -1937,6 +2068,107 @@ server_sens <- function(input, output, session) {
       return(NULL)
     }
     dplyr::bind_rows(mig_dfs_list_sa)
+  })
+
+  # Aggregate Comparison Plots (e.g., total population over time for each setup)
+  output$SAcompAggPop <- shiny::renderUI({
+    plotly::plotlyOutput("sa_comparing_agg_pop_plot")
+  })
+  output$sa_comparing_agg_pop_plot <- plotly::renderPlotly({
+    req(sa_combined_pop_results())
+    plot_data_sa_pop <- sa_combined_pop_results()
+    # Aggregate total population by time, sex, and setup.
+    varied_param_col_name <- sensitivity_varied_param_info()$name # Get the column name of the varied parameter.
+    plot_data_sa_pop[[varied_param_col_name]] <- factor(round(plot_data_sa_pop[[varied_param_col_name]], 5))
+
+    input_cols <- setdiff(colnames(plot_data_sa_pop), c("age", "sex", "time", "population", "population.fitted", "population.upper", "population.lower", "run_id_sa", varied_param_col_name))
+    plot_data_sa_pop_inputs_long <- plot_data_sa_pop %>%
+      tidyr::pivot_longer(cols = input_cols, names_to = "count_type", values_to = "count_value")
+    inputs_agg <- plot_data_sa_pop_inputs_long %>%
+      dplyr::group_by(.data$time, .data$sex, .data[[varied_param_col_name]], .data$count_type) %>%
+      dplyr::summarise(total_count = sum(count_value, na.rm = TRUE), .groups = "drop")
+
+    pop_aggs <- plot_data_sa_pop %>%
+      dplyr::group_by(.data$time, .data$sex, .data[[varied_param_col_name]]) %>%
+      dplyr::summarise(agg_pop = sum(.data$population.fitted, na.rm = TRUE), .groups = "drop")
+    p <- ggplot2::ggplot(pop_aggs, ggplot2::aes(x = .data$time, y = .data$agg_pop, color = .data[[varied_param_col_name]])) +
+      ggplot2::geom_line() +
+      ggplot2::geom_point(size = 2) +
+      ggplot2::geom_point(data = inputs_agg %>% filter(.data$total_count != 0), aes(x = .data$time, y = .data$total_count, shape = .data$count_type), size = 2) +
+      ggplot2::facet_grid(cols = ggplot2::vars(.data$sex)) +
+      ggplot2::labs(title = "Aggregate Population Comparison Over Time", y = "Total Population", x = "Time") +
+      ggplot2::theme_minimal()
+    plotly::ggplotly(p)
+  })
+
+
+  # Aggregate Comparison Plots (e.g., total immigration over time for each setup)
+  output$SAcompAggImmig <- shiny::renderUI({
+    plotly::plotlyOutput("sa_comparing_agg_immig_plot")
+  })
+  output$sa_comparing_agg_immig_plot <- plotly::renderPlotly({
+    req(sa_combined_mig_results())
+    plot_data_sa_mig <- sa_combined_mig_results()
+    # Aggregate total immigration by time, sex, and setup.
+    varied_param_col_name <- sensitivity_varied_param_info()$name # Get the column name of the varied parameter.
+    plot_data_sa_mig[[varied_param_col_name]] <- factor(round(plot_data_sa_mig[[varied_param_col_name]], 5))
+
+    ins_aggs <- plot_data_sa_mig %>%
+      dplyr::group_by(.data$time, .data$sex, .data[[varied_param_col_name]]) %>%
+      dplyr::summarise(agg_ins = sum(.data$ins.fitted, na.rm = TRUE), .groups = "drop")
+    p <- ggplot2::ggplot(ins_aggs, ggplot2::aes(x = .data$time, y = .data$agg_ins, color = .data[[varied_param_col_name]])) +
+      ggplot2::geom_line() +
+      ggplot2::geom_point(size = 2) +
+      ggplot2::facet_grid(cols = ggplot2::vars(.data$sex)) +
+      ggplot2::labs(title = "Aggregate Immigration Comparison Over Time", y = "Total Immigration", x = "Time") +
+      ggplot2::theme_minimal()
+    plotly::ggplotly(p)
+  })
+
+  # Aggregate Comparison Plots (e.g., total immigration over time for each setup)
+  output$SAcompAggEmig <- shiny::renderUI({
+    plotly::plotlyOutput("sa_comparing_agg_emig_plot")
+  })
+  output$sa_comparing_agg_emig_plot <- plotly::renderPlotly({
+    req(sa_combined_mig_results())
+    plot_data_sa_mig <- sa_combined_mig_results()
+    # Aggregate total immigration by time, sex, and setup.
+    varied_param_col_name <- sensitivity_varied_param_info()$name # Get the column name of the varied parameter.
+    plot_data_sa_mig[[varied_param_col_name]] <- factor(round(plot_data_sa_mig[[varied_param_col_name]], 5))
+
+    outs_aggs <- plot_data_sa_mig %>%
+      dplyr::group_by(.data$time, .data$sex, .data[[varied_param_col_name]]) %>%
+      dplyr::summarise(agg_outs = sum(.data$outs.fitted, na.rm = TRUE), .groups = "drop")
+    p <- ggplot2::ggplot(outs_aggs, ggplot2::aes(x = .data$time, y = .data$agg_outs, color = .data[[varied_param_col_name]])) +
+      ggplot2::geom_line() +
+      ggplot2::geom_point(size = 2) +
+      ggplot2::facet_grid(cols = ggplot2::vars(.data$sex)) +
+      ggplot2::labs(title = "Aggregate Emigration Comparison Over Time", y = "Total Immigration", x = "Time") +
+      ggplot2::theme_minimal()
+    plotly::ggplotly(p)
+  })
+
+  # Aggregate Comparison Plots (e.g., total immigration over time for each setup)
+  output$SAcompAggNetMig <- shiny::renderUI({
+    plotly::plotlyOutput("sa_comparing_agg_netmig_plot")
+  })
+  output$sa_comparing_agg_netmig_plot <- plotly::renderPlotly({
+    req(sa_combined_mig_results())
+    plot_data_sa_mig <- sa_combined_mig_results()
+    # Aggregate net migration by time, sex, and setup.
+    varied_param_col_name <- sensitivity_varied_param_info()$name # Get the column name of the varied parameter.
+    plot_data_sa_mig[[varied_param_col_name]] <- factor(round(plot_data_sa_mig[[varied_param_col_name]], 5))
+
+    net_aggs <- plot_data_sa_mig %>%
+      dplyr::group_by(.data$time, .data$sex, .data[[varied_param_col_name]]) %>%
+      dplyr::summarise(agg_net = sum(.data$ins.fitted - .data$outs.fitted, na.rm = TRUE), .groups = "drop")
+    p <- ggplot2::ggplot(net_aggs, ggplot2::aes(x = .data$time, y = .data$agg_net, color = .data[[varied_param_col_name]])) +
+      ggplot2::geom_line() +
+      ggplot2::geom_point(size = 2) +
+      ggplot2::facet_grid(cols = ggplot2::vars(.data$sex)) +
+      ggplot2::labs(title = "Aggregate Net Migration Comparison Over Time", y = "Net Migration (Ins - Outs)", x = "Time") +
+      ggplot2::theme_minimal()
+    plotly::ggplotly(p)
   })
 
   # --- Plotting Sensitivity Analysis Results ---

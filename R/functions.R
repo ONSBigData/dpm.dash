@@ -24,23 +24,55 @@
 #' my_sysmod <- create_system_model(model_name = "births", rates_df = my_rates_df, disp = 0.05)
 #'
 #' @export
-create_system_model <- function(model_name, rates_df, disp, time_selection = NULL, lower_rates_limit = 0, rate_scaler = 1, rate_overide = -1, rate_noise = 0) {
+create_system_model <- function(
+    model_name,
+    rates_df,
+    disp,
+    time_selection = NULL,
+    lower_rates_limit = 0,
+    rate_scaler = 1,
+    rate_overide = -1,
+    rate_noise = 0,
+    age_target = "0:105",
+    sex_target = "Male, Female",
+    time_target = "all") {
   if (!is.null(time_selection)) {
     rates_df <- rates_df[rates_df$time %in% time_selection, ]
   }
 
-  sysmod_mean <- tibble::as_tibble(rates_df %>%
-    # dplyr::mutate(rate = rate + stats::runif(n(), min = -rate_noise, max = rate_noise) * rate) %>%
-    dplyr::mutate(rate = .data$rate + stats::rnorm(n(), mean = 0, sd = rate_noise) * .data$rate) %>%
-    dplyr::mutate(rate = ifelse(.data$rate < lower_rates_limit,
-      lower_rates_limit,
-      .data$rate * rate_scaler
-    )) %>%
-    dplyr::rename(mean = .data$rate))
+  if (time_target != "all") {
+    time_target <- parse_values(time_target)
+  } else {
+    time_target <- unique(rates_df$time)
+  }
+
+  age_target <- parse_values(age_target)
+  sex_target <- parse_values(sex_target)
+
+  if ("sex" %in% colnames(rates_df)) {
+    sysmod_mean <- tibble::as_tibble(rates_df %>%
+      # dplyr::mutate(rate = rate + stats::runif(n(), min = -rate_noise, max = rate_noise) * rate) %>%
+      dplyr::mutate(rate = ifelse(age %in% age_target & time %in% time_target & sex %in% sex_target, .data$rate + stats::rnorm(n(), mean = 0, sd = rate_noise) * .data$rate, .data$rate)) %>%
+      dplyr::mutate(rate = ifelse(age %in% age_target & time %in% time_target & sex %in% sex_target, .data$rate * rate_scaler, .data$rate)) %>%
+      dplyr::mutate(rate = ifelse(.data$rate < lower_rates_limit, lower_rates_limit, .data$rate)) %>%
+      dplyr::rename(mean = .data$rate))
+  } else {
+    sysmod_mean <- tibble::as_tibble(rates_df %>%
+      # dplyr::mutate(rate = rate + stats::runif(n(), min = -rate_noise, max = rate_noise) * rate) %>%
+      dplyr::mutate(rate = ifelse(age %in% age_target & time %in% time_target, .data$rate + stats::rnorm(n(), mean = 0, sd = rate_noise) * .data$rate, .data$rate)) %>%
+      dplyr::mutate(rate = ifelse(age %in% age_target & time %in% time_target, .data$rate * rate_scaler, .data$rate)) %>%
+      dplyr::mutate(rate = ifelse(.data$rate < lower_rates_limit, lower_rates_limit, .data$rate)) %>%
+      dplyr::rename(mean = .data$rate))
+  }
 
   if (rate_overide > 0) {
-    sysmod_mean <- tibble::as_tibble(sysmod_mean %>%
-      dplyr::mutate(mean = rate_overide))
+    if ("sex" %in% colnames(sysmod_mean)) {
+      sysmod_mean <- tibble::as_tibble(sysmod_mean %>%
+        dplyr::mutate(mean = ifelse(age %in% age_target & time %in% time_target & sex %in% sex_target, rate_overide, mean)))
+    } else {
+      sysmod_mean <- tibble::as_tibble(sysmod_mean %>%
+        dplyr::mutate(mean = ifelse(age %in% age_target & time %in% time_target, rate_overide, mean)))
+    }
   }
 
   sysmod <- accountTMB::sysmod(
@@ -251,6 +283,87 @@ create_data_model <- function(dm_name, series_name, dm_type, counts_df,
       nm_data = dm_name,
       scale_ratio = scale_ratio
     )
+  } else if (dm_type == "Log-Normal Data Model") {
+    dm_counts <- tibble::as_tibble(counts_df %>%
+      dplyr::filter(
+        .data$time %in% time_select,
+        .data$age %in% age_select
+      ) %>%
+      dplyr::mutate(count = .data$count * as.numeric(count_scaler)))
+
+    dm_sd <- tibble::as_tibble(uncertainty_df %>%
+      dplyr::filter(
+        .data$time %in% time_select,
+        .data$age %in% age_select
+      ) %>%
+      dplyr::mutate(sd = ifelse(
+        .data$sd < min_sd,
+        min_sd,
+        .data$sd
+      )) %>%
+      dplyr::mutate(sd = .data$sd * as.numeric(sd_scaler)))
+
+    if (sd_overide > 0) {
+      dm_sd <- tibble::as_tibble(dm_sd %>%
+        dplyr::mutate(sd = sd_overide))
+    }
+
+    datamod <- accountTMB::datamod_lognorm(
+      data = dm_counts,
+      ratio = ratio,
+      sd = dm_sd,
+      nm_series = series_name,
+      nm_data = dm_name,
+      scale_ratio = scale_ratio
+    )
   }
   return(datamod)
+}
+
+#' Parse Numeric Ranges or Text Values from a String
+#'
+#' Parses a comma-separated string containing either numeric values, numeric ranges (e.g., "1:5"), or plain text values, and returns a unique vector of parsed values.
+#'
+#' @param input_string A character string containing comma-separated values. Values can be numeric (e.g., "1,2,3"), numeric ranges (e.g., "1:3,5"), or text (e.g., "Male, Female").
+#'
+#' @return A vector of unique values. If the input contains numeric values or ranges, a numeric vector is returned. If the input contains text values, a character vector is returned.
+#'
+#' @details
+#' The function first checks whether the input string contains numeric characters or range indicators (":").
+#' - If numeric, it splits the string by commas, trims whitespace, and expands any ranges (e.g., "1:3" becomes 1, 2, 3).
+#' - If non-numeric, it returns a unique set of trimmed text values.
+#' Invalid numeric entries or malformed ranges are ignored.
+#'
+#' @examples
+#' parse_values("1,2,3") # Returns: 1 2 3
+#' parse_values("1:3,5") # Returns: 1 2 3 5
+#' parse_values("Male, Female") # Returns: "Male" "Female"
+#' parse_values("10:8, 2, 4") # Returns: 10 9 8 2 4
+#' parse_values("a, b, c, a") # Returns: "a" "b" "c"
+#'
+#' @export
+parse_values <- function(input_string) {
+  is_numeric_input <- grepl("[0-9:]", input_string)
+
+  if (is_numeric_input) {
+    parts <- unlist(strsplit(input_string, ","))
+
+    final_values <- unlist(lapply(parts, function(part) {
+      part <- trimws(part)
+      if (grepl(":", part)) {
+        range_parts <- as.numeric(unlist(strsplit(part, ":")))
+        if (length(range_parts == 2) && !any(is.na(range_parts))) {
+          return(seq(range_parts[1], range_parts[2]))
+        } else {
+          return(NA)
+        }
+      } else {
+        return(as.numeric(part))
+      }
+    }))
+    return(unique(na.omit(final_values)))
+  } else {
+    text_values <- trimws(unlist(strsplit(input_string, ",")))
+    return(unique(text_values[text_values != ""]))
+  }
 }
