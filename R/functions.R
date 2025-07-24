@@ -425,3 +425,88 @@ send_object_to_API <- function(object, endpoint){
   return(out)
 
 }
+
+#' Extract Population and Migration Estimates from Results List
+#'
+#' Processes a list of model results and extracts population and migration estimates
+#' using `accountTMB::augment_population()` and `accountTMB::augment_events()`.
+#'
+#' @param res_list A list of fitted model result objects, each compatible with the `accountTMB` package.
+#' @param combined Boolean flag controlling whether to output a single dataframe with population/migration estimates for saving to .csv
+#'
+#' @return A named list containing two data frames:
+#' \describe{
+#'   \item{population_estimate}{A data frame of population estimates, collapsed by cohort.}
+#'   \item{migration_estimate}{A data frame of migration estimates, collapsed by age, with age calculated as `time - cohort`.}
+#' }
+#'
+#' @details
+#' For each result object in `res_list`, the function:
+#' - Extracts population estimates using `augment_population(collapse = "cohort")`.
+#' - Extracts migration events using `augment_events(collapse = "age")` and computes age as `time - cohort`.
+#' The outputs are combined across all result objects into unified data frames.
+#'
+#' @examples
+#' \dontrun{
+#' results <- list(model1, model2)
+#' output <- extract_outputs_from_results_list(results)
+#' head(output$population_estimate)
+#' head(output$migration_estimate)
+#' }
+#'
+#' @importFrom accountTMB augment_population augment_events
+#' @importFrom dplyr mutate bind_rows
+#' @export
+extract_outputs_from_results_list <- function(res_list, combined = FALSE) {
+  pop_est <- data.frame()
+  mig_est <- data.frame()
+  for (res_name in names(res_list)) {
+    pop <- res_list[[res_name]] %>%
+      accountTMB::augment_population(collapse = "cohort") %>%
+      mutate(region = res_name, account_name = "population") %>%
+      select(age, sex, time, region, account_name, population.fitted, population.lower, population.upper) %>%
+      rename(
+        mean = population.fitted,
+        lower = population.lower,
+        upper = population.upper
+      )
+    mig_comb <- res_list[[res_name]]  %>%
+      accountTMB::augment_events(collapse = "age") %>%
+      dplyr::mutate(age = .data$time - .data$cohort) %>%
+      mutate(region = res_name)
+
+    mig <- bind_rows(
+      mig_comb %>%
+        select(age, sex, time, region, ins.fitted, ins.lower, ins.upper) %>%
+        rename(
+          mean = ins.fitted,
+          lower = ins.lower,
+          upper = ins.upper
+        ) %>%
+        mutate(account_name = "ins"),
+      mig_comb %>%
+        select(age, sex, time, region, outs.fitted, outs.lower, outs.upper) %>%
+        rename(
+          mean = outs.fitted,
+          lower = outs.lower,
+          upper = outs.upper
+        ) %>%
+        mutate(account_name = "outs")
+    )
+    pop_est <- bind_rows(pop_est, pop)
+    mig_est <- bind_rows(mig_est, mig)
+  }
+
+  if (combined) {
+    return(
+      bind_rows(pop_est, mig_est)
+    )
+  } else {
+    return(
+      list(
+        population_estimate = pop_est,
+        migration_estimate = mig_est
+      )
+    )
+  }
+}
