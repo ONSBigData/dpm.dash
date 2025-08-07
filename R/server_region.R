@@ -28,12 +28,18 @@
 #' @import DT
 #' @import accountTMB
 server_region <- function(input, output, session) {
+  # We set up a future plan, for paralell processing
+  # future::plan(strategy = future::multisession(workers = future::availableCores() - 4))
+  # Trying callr
+  future::plan(strategy = future.callr::callr(workers = future::availableCores() - 4))
   # Define the global reactive lists which the dashboard relies on
   datamod_list <- reactiveVal(list()) # All defined data models
   global_config <- reactiveVal(list()) # User-defined global config
   sysmod_list <- reactiveVal(list()) # All defined system models
   sysmod_list_list <- reactiveVal(list())
-  selected_data_models <- reactiveVal(list()) # Checklist su
+  selected_data_models <- reactiveVal(list())
+
+  r <- reactiveValues(create_system_models = 0)
 
   ## globalConfig Tab
   # Defaults for global_config
@@ -41,14 +47,35 @@ server_region <- function(input, output, session) {
   default_data_dir <- here::here("data/") # Default data_dir in package
   default_seed_value <- numbers::nextPrime(as.integer(Sys.time())) # Generate a random prime number as the default seed value
 
+  # Load modules
+  # TODO: currently hybrid approach, change so that all content is loaded and
+  # handled in shiny modules
+  lapply(
+    c("births", "deaths", "ins", "outs"),
+    \(model) mod_system_models_server(model,
+      r,
+      sys_mod_type = model,
+      global_config = global_config,
+      create_sys_models_button = input$create_system_models
+    )
+  )
 
   # Observe global config save button press
   shiny::observeEvent(input$save_global_config, {
+    current_region_selection <- if (nzchar(input$region_selection)) {
+      strsplit(input$region_selection, ",") |>
+        unlist() |>
+        trimws()
+    } else {
+      ""
+    }
+
     global_config(list(
       data_dir = if (nzchar(input$global_data_dir)) input$global_data_dir else default_data_dir, # Use default if empty
       output_dir = if (nzchar(input$global_output_dir)) input$global_output_dir else default_output_dir, # Use default if empty
       time_selection = if (nzchar(input$global_time_selection)) as.integer(unlist(strsplit(input$global_time_selection, ","))) else NULL,
-      seed_value = if (nzchar(input$global_seed_value)) input$global_seed_value else default_seed_value # Use default if empty
+      seed_value = if (nzchar(input$global_seed_value)) input$global_seed_value else default_seed_value, # Use default if empty,
+      region_selection = current_region_selection
     ))
     shiny::showModal(modalDialog(
       title = "Global Configuration Saved",
@@ -58,31 +85,47 @@ server_region <- function(input, output, session) {
     ))
   })
 
+  # TODO: This observer makes the observer in mod_system_models work.
+  # I have some idea why, although the below is
+  # just forcing reactivity at this point.
+  observe({
+    r$create_system_models <- r$create_system_models + 1
+  }) |>
+    bindEvent(input$create_system_models)
+
   ## systemModels Tab
   # Observe event for creating the system models (all 4 at once)
-  shiny::observeEvent(input$create_system_models, {
-    file_error <- FALSE # Flag to track file errors
+  shiny::observeEvent(r[["create_system_models"]], {
+    if (!all(as.logical(r$sys_mod_files_exist))) {
+      # Display a warning if any file errors occurred
+      shinyWidgets::sendSweetAlert(
+        session = session,
+        title = "File Error",
+        text = "One or more files specified for the system models do not exist. Please check your file paths and try again.",
+        type = "error"
+      )
+    }
     req(global_config()$data_dir)
+    req(all(as.logical(r$sys_mod_files_exist)))
     models <- c("births", "deaths", "ins", "outs")
     new_sysmods <- lapply(models, function(model) {
-      rates_file <- file.path(global_config()$data_dir, input[[paste0(model, "_rates_file")]])
+      rates_file <- r[["sysmods"]][[model]][["rates_file"]]
+      rates_df <- vroom::vroom(rates_file)
 
-      if (!file.exists(rates_file)) {
-        file_error <<- TRUE # Set error flag to TRUE
-        return(NULL) # Return NULL if file not found
+      # If no region_selection was provided in the global_config tab then assign all unique regions in the rates data
+      if (!nzchar(input$region_selection)) {
+        current_config <- global_config()
+        current_config$region_selection <- unique(rates_df$region)
+        global_config(current_config)
       }
 
-      rates_df <- utils::read.csv(rates_file)
-
-      if (input[[paste0(model, "_disp_type")]] == "Single Value") {
-        disp <- input[[paste0(model, "_disp_value")]]
+      if (r[["sysmods"]][[model]][["disp_type"]] == "Single Value") {
+        print("using single disp value")
+        disp <- r[["sysmods"]][[model]][["disp_value"]]
       } else {
-        disp_file <- file.path(global_config()$data_dir, input[[paste0(model, "_disp_file")]])
-        if (!file.exists(disp_file)) {
-          file_error <<- TRUE
-          return(NULL)
-        }
-        disp <- utils::read.csv(disp_file)
+        print("using csv disp")
+        disp_file <- file.path(global_config()$data_dir, r[["sysmods"]][[model]][["disp_file"]])
+        disp <- vroom::vroom(disp_file)
       }
 
       lower_rates_limit <- input[[paste0(model, "_lower_rate_limit")]]
@@ -93,19 +136,37 @@ server_region <- function(input, output, session) {
 
       time_selection <- global_config()$time_selection
 
-      create_system_model(model, rates_df, disp, time_selection, lower_rates_limit, rate_scaler, rate_overide)
+      # Get the intersecting date selection from the time selection and the rates dfs
+      if (is.null(time_selection) & is.null(r$time_selection)) {
+        print("No time selected, set time_selection from rates df")
+        time_selection <- unique(rates_df$time)
+        r$time_selection <- time_selection
+      } else if (setequal(r$time_selection, unique(rates_df$time))) {
+        print("Time selection and dates equal, all good!")
+      } else {
+        print("Time selection and dates inequal, subsetting rates df to time selection")
+        time_selection <- time_selection[time_selection %in% r$time_selection]
+      }
+
+      # This is what we need to vary by Local authority
+      # could just use create_system_model_region in a group map?
+      create_system_model_region(
+        model,
+        rates_df,
+        disp,
+        global_config()$region_selection,
+        time_selection,
+        lower_rates_limit,
+        rate_scaler,
+        rate_overide
+      )
     })
 
-    if (file_error) { # Display a warning if any file errors occurred
-      shinyWidgets::sendSweetAlert(
-        session = session,
-        title = "File Error",
-        text = "One or more files specified for the system models do not exist. Please check your file paths and try again.",
-        type = "error"
-      )
-    }
+
 
     names(new_sysmods) <- models # Ensure the new models are named correctly
+    # Update the region preview
+    updateSelectInput(session, "region_preview", choices = names(new_sysmods[[1]]))
     sysmod_list(c(new_sysmods))
 
     currentList <- sysmod_list_list()
@@ -145,7 +206,8 @@ server_region <- function(input, output, session) {
 
     output$modelPlots <- shiny::renderUI({
       lapply(models, function(model) {
-        sysmod <- sysmod_list()[[model]]
+        # System models that need to be subsetted by region
+        sysmod <- sysmod_list()[[model]][[1]]
         if (!is.null(sysmod)) {
           plotly::plotlyOutput(outputId = paste0(model, "_plot"))
         }
@@ -154,7 +216,7 @@ server_region <- function(input, output, session) {
 
     lapply(models, function(model) {
       output[[paste0(model, "_summary")]] <- renderPrint({
-        sysmod <- sysmod_list()[[model]]
+        sysmod <- sysmod_list()[[model]][[input$region_preview]]
         if (!is.null(sysmod)) {
           cat("Summary of rates data for", model, "\n")
           generate_summary(as.data.frame(sysmod$mean) %>% dplyr::rename(rate = .data$mean))
@@ -162,7 +224,7 @@ server_region <- function(input, output, session) {
       })
 
       output[[paste0(model, "_plot")]] <- plotly::renderPlotly({
-        sysmod <- sysmod_list()[[model]]
+        sysmod <- sysmod_list()[[model]][[input$region_preview]]
         if (!is.null(sysmod)) {
           generate_plots(as.data.frame(sysmod$mean) %>% dplyr::rename(rate = .data$mean), model)
         }
@@ -209,24 +271,23 @@ server_region <- function(input, output, session) {
     req(global_config()$data_dir)
     models <- c("births", "deaths", "ins", "outs")
     new_sysmods <- lapply(models, function(model) {
-      rates_file <- file.path(global_config()$data_dir, input[[paste0(model, "_rates_file")]])
+      rates_file <- r[["sysmods"]][[model]][["rates_file"]]
+      rates_df <- vroom::vroom(rates_file)
 
-      if (!file.exists(rates_file)) {
-        file_error <<- TRUE # Set error flag to TRUE
-        return(NULL) # Return NULL if file not found
+      # If no region_selection was provided in the global_config tab then assign all unique regions in the rates data
+      if (!nzchar(input$region_selection)) {
+        current_config <- global_config()
+        current_config$region_selection <- unique(rates_df$region)
+        global_config(current_config)
       }
 
-      rates_df <- utils::read.csv(rates_file)
-
-      if (input[[paste0(model, "_disp_type")]] == "Single Value") {
-        disp <- input[[paste0(model, "_disp_value")]]
+      if (r[["sysmods"]][[model]][["disp_type"]] == "Single Value") {
+        print("using single disp value")
+        disp <- r[["sysmods"]][[model]][["disp_value"]]
       } else {
-        disp_file <- file.path(global_config()$data_dir, input[[paste0(model, "_disp_file")]])
-        if (!file.exists(disp_file)) {
-          file_error <<- TRUE
-          return(NULL)
-        }
-        disp <- utils::read.csv(disp_file)
+        print("using csv disp")
+        disp_file <- file.path(global_config()$data_dir, r[["sysmods"]][[model]][["disp_file"]])
+        disp <- vroom::vroom(disp_file)
       }
 
       lower_rates_limit <- input[[paste0(model, "_lower_rate_limit")]]
@@ -237,17 +298,19 @@ server_region <- function(input, output, session) {
 
       time_selection <- global_config()$time_selection
 
-      create_system_model(model, rates_df, disp, time_selection, lower_rates_limit, rate_scaler, rate_overide)
-    })
-
-    if (file_error) { # Display a warning if any file errors occurred
-      shinyWidgets::sendSweetAlert(
-        session = session,
-        title = "File Error",
-        text = "One or more files specified for the system models do not exist. Please check your file paths and try again.",
-        type = "error"
+      # Again here, create it for system model region
+      create_system_model_region(
+        model,
+        rates_df,
+        disp,
+        global_config()$region_selection,
+        time_selection,
+        lower_rates_limit,
+        rate_scaler,
+        rate_overide
       )
-    }
+      # create_system_model(model, rates_df, disp, time_selection, lower_rates_limit, rate_scaler, rate_overide)
+    })
 
     names(new_sysmods) <- models # Ensure the new models are named correctly
     saveRDS(c(new_sysmods), paste0(global_config()$data_dir, "/", input$sysmods_name, "_sysmods.RDS"))
@@ -279,10 +342,8 @@ server_region <- function(input, output, session) {
     raw_counts <- utils::read.csv(counts_file_path)
 
     if ("region" %in% colnames(raw_counts)) {
-      raw_counts %>%
-        dplyr::filter(.data$region %in% global_config()$region_selection) %>%
-        dplyr::select(-.data$region)
-
+      raw_counts <- raw_counts %>%
+        dplyr::filter(region %in% global_config()$region_selection)
       return(raw_counts)
     } else {
       return(raw_counts)
@@ -310,8 +371,7 @@ server_region <- function(input, output, session) {
 
       if ("region" %in% colnames(raw_uncertainty)) {
         raw_uncertainty <- raw_uncertainty %>%
-          dplyr::filter(.data$region %in% global_config()$region_selection) %>%
-          dplyr::select(-.data$region)
+          dplyr::filter(region %in% global_config()$region_selection)
 
         extraData$uncertainty <- raw_uncertainty
       } else {
@@ -396,109 +456,109 @@ server_region <- function(input, output, session) {
   # Render the additional auxiliary data inputs when selected
   output$additionalInputs <- shiny::renderUI({
     switch(input$data_model,
-           "Normal Data Model" = tagList(
-             shiny::textInput("counts_uncertainty_file", "Counts Uncertainty CSV Filename")
-           ),
-           "T-Dist Data Model" =
-             tagList(
-               radioButtons("scale_type", "Scale Input Type", choices = c("Single Value", "CSV File")),
-               conditionalPanel(
-                 condition = "input.scale_type == 'Single Value'",
-                 numericInput("scale_value", "Scale Value", value = 0.1)
-               ),
-               conditionalPanel(
-                 condition = "input.scale_type == 'CSV File'",
-                 textInput("scale_file", "Scale CSV Filename")
-               )
-             ),
-           "Negative Binomial Data Model" =
-             tagList(
-               radioButtons("disp_type", "Dispersion Input Type", choices = c("Single Value", "CSV File")),
-               conditionalPanel(
-                 condition = "input.disp_type == 'Single Value'",
-                 numericInput("disp_value", "Dispersion Value", value = 0.1)
-               ),
-               conditionalPanel(
-                 condition = "input.disp_type == 'CSV File'",
-                 textInput("disp_file", "Dispersion CSV Filename")
-               )
-             ),
-           "Poisson Data Model" =
-             tagList(),
-           NULL
+      "Normal Data Model" = tagList(
+        shiny::textInput("counts_uncertainty_file", "Counts Uncertainty CSV Filename")
+      ),
+      "T-Dist Data Model" =
+        tagList(
+          radioButtons("scale_type", "Scale Input Type", choices = c("Single Value", "CSV File")),
+          conditionalPanel(
+            condition = "input.scale_type == 'Single Value'",
+            numericInput("scale_value", "Scale Value", value = 0.1)
+          ),
+          conditionalPanel(
+            condition = "input.scale_type == 'CSV File'",
+            textInput("scale_file", "Scale CSV Filename")
+          )
+        ),
+      "Negative Binomial Data Model" =
+        tagList(
+          radioButtons("disp_type", "Dispersion Input Type", choices = c("Single Value", "CSV File")),
+          conditionalPanel(
+            condition = "input.disp_type == 'Single Value'",
+            numericInput("disp_value", "Dispersion Value", value = 0.1)
+          ),
+          conditionalPanel(
+            condition = "input.disp_type == 'CSV File'",
+            textInput("disp_file", "Dispersion CSV Filename")
+          )
+        ),
+      "Poisson Data Model" =
+        tagList(),
+      NULL
     )
   })
 
   # Render the additional auxiliary data inputs when selected
   output$optionalInputs <- shiny::renderUI({
     switch(input$data_model,
-           "Normal Data Model" = tagList(
-             shiny::radioButtons("ratio_type", "Coverage Ratio Type", choices = c("Single Value", "CSV File")),
-             shiny::conditionalPanel(
-               condition = "input.ratio_type == 'Single Value'",
-               numericInput("ratio_value", "Ratio Value", value = 1)
-             ),
-             shiny::conditionalPanel(
-               condition = "input.ratio_type == 'CSV File'",
-               textInput("ratio_file", "Ratio CSV Filename", value = "")
-             ),
-             shiny::numericInput("scale_ratio", "Optional: Scale Ratio", value = 0),
-             shiny::numericInput("min_sd", "Optional: Minimum SD", value = 0),
-             shiny::sliderInput("sd_scaler", "Optional: SD Scaler", value = 1, min = 0, max = 3, step = 0.1),
-             shiny::numericInput("sd_overide", "Optional: SD Set", value = -1),
-             shiny::sliderInput("count_scaler", paste("Optional: Count Scaler"), value = 1, min = 0, max = 3, step = 0.1),
-             shiny::textInput("age_selection", "Optional: Age Selection (comma separated or leave blank for all)", value = ""),
-             shiny::textInput("time_selection", "Optional: Time Selection (comma separated or leave blank for all)", value = "")
-           ),
-           "T-Dist Data Model" =
-             tagList(
-               shiny::radioButtons("ratio_type", "Coverage Ratio Type", choices = c("Single Value", "CSV File")),
-               shiny::conditionalPanel(
-                 condition = "input.ratio_type == 'Single Value'",
-                 numericInput("ratio_value", "Ratio Value", value = 1)
-               ),
-               shiny::conditionalPanel(
-                 condition = "input.ratio_type == 'CSV File'",
-                 textInput("ratio_file", "Ratio CSV Filename", value = "")
-               ),
-               numericInput("scale_ratio", "Scale Ratio", value = 0),
-               sliderInput("count_scaler", paste("Optional: Count Scaler"), value = 1, min = 0, max = 3, step = 0.1),
-               shiny::textInput("age_selection", "Optional: Age Selection (comma separated or leave blank for all)", value = ""),
-               shiny::textInput("time_selection", "Optional: Time Selection (comma separated or leave blank for all)", value = "")
-             ),
-           "Negative Binomial Data Model" =
-             tagList(
-               radioButtons("ratio_type", "Coverage Ratio Type", choices = c("Single Value", "CSV File")),
-               conditionalPanel(
-                 condition = "input.ratio_type == 'Single Value'",
-                 numericInput("ratio_value", "Ratio Value", value = 1)
-               ),
-               conditionalPanel(
-                 condition = "input.ratio_type == 'CSV File'",
-                 textInput("ratio_file", "Ratio CSV Filename", value = "")
-               ),
-               numericInput("scale_ratio", "Scale Ratio", value = 0),
-               sliderInput("count_scaler", paste("Optional: Count Scaler"), value = 1, min = 0, max = 3, step = 0.1),
-               shiny::textInput("age_selection", "Optional: Age Selection (comma separated or leave blank for all)", value = ""),
-               shiny::textInput("time_selection", "Optional: Time Selection (comma separated or leave blank for all)", value = "")
-             ),
-           "Poisson Data Model" =
-             tagList(
-               radioButtons("ratio_type", "Coverage Ratio Type", choices = c("Single Value", "CSV File")),
-               conditionalPanel(
-                 condition = "input.ratio_type == 'Single Value'",
-                 numericInput("ratio_value", "Ratio Value", value = 1)
-               ),
-               conditionalPanel(
-                 condition = "input.ratio_type == 'CSV File'",
-                 textInput("ratio_file", "Ratio CSV Filename", value = "")
-               ),
-               numericInput("scale_ratio", "Scale Ratio", value = 0),
-               sliderInput("count_scaler", paste("Optional: Count Scaler"), value = 1, min = 0, max = 3, step = 0.1),
-               shiny::textInput("age_selection", "Optional: Age Selection (comma separated or leave blank for all)", value = ""),
-               shiny::textInput("time_selection", "Optional: Time Selection (comma separated or leave blank for all)", value = "")
-             ),
-           NULL
+      "Normal Data Model" = tagList(
+        shiny::radioButtons("ratio_type", "Coverage Ratio Type", choices = c("Single Value", "CSV File")),
+        shiny::conditionalPanel(
+          condition = "input.ratio_type == 'Single Value'",
+          numericInput("ratio_value", "Ratio Value", value = 1)
+        ),
+        shiny::conditionalPanel(
+          condition = "input.ratio_type == 'CSV File'",
+          textInput("ratio_file", "Ratio CSV Filename", value = "")
+        ),
+        shiny::numericInput("scale_ratio", "Optional: Scale Ratio", value = 0),
+        shiny::numericInput("min_sd", "Optional: Minimum SD", value = 0),
+        shiny::sliderInput("sd_scaler", "Optional: SD Scaler", value = 1, min = 0, max = 3, step = 0.1),
+        shiny::numericInput("sd_overide", "Optional: SD Set", value = -1),
+        shiny::sliderInput("count_scaler", paste("Optional: Count Scaler"), value = 1, min = 0, max = 3, step = 0.1),
+        shiny::textInput("age_selection", "Optional: Age Selection (comma separated or leave blank for all)", value = ""),
+        shiny::textInput("time_selection", "Optional: Time Selection (comma separated or leave blank for all)", value = "")
+      ),
+      "T-Dist Data Model" =
+        tagList(
+          shiny::radioButtons("ratio_type", "Coverage Ratio Type", choices = c("Single Value", "CSV File")),
+          shiny::conditionalPanel(
+            condition = "input.ratio_type == 'Single Value'",
+            numericInput("ratio_value", "Ratio Value", value = 1)
+          ),
+          shiny::conditionalPanel(
+            condition = "input.ratio_type == 'CSV File'",
+            textInput("ratio_file", "Ratio CSV Filename", value = "")
+          ),
+          numericInput("scale_ratio", "Scale Ratio", value = 0),
+          sliderInput("count_scaler", paste("Optional: Count Scaler"), value = 1, min = 0, max = 3, step = 0.1),
+          shiny::textInput("age_selection", "Optional: Age Selection (comma separated or leave blank for all)", value = ""),
+          shiny::textInput("time_selection", "Optional: Time Selection (comma separated or leave blank for all)", value = "")
+        ),
+      "Negative Binomial Data Model" =
+        tagList(
+          radioButtons("ratio_type", "Coverage Ratio Type", choices = c("Single Value", "CSV File")),
+          conditionalPanel(
+            condition = "input.ratio_type == 'Single Value'",
+            numericInput("ratio_value", "Ratio Value", value = 1)
+          ),
+          conditionalPanel(
+            condition = "input.ratio_type == 'CSV File'",
+            textInput("ratio_file", "Ratio CSV Filename", value = "")
+          ),
+          numericInput("scale_ratio", "Scale Ratio", value = 0),
+          sliderInput("count_scaler", paste("Optional: Count Scaler"), value = 1, min = 0, max = 3, step = 0.1),
+          shiny::textInput("age_selection", "Optional: Age Selection (comma separated or leave blank for all)", value = ""),
+          shiny::textInput("time_selection", "Optional: Time Selection (comma separated or leave blank for all)", value = "")
+        ),
+      "Poisson Data Model" =
+        tagList(
+          radioButtons("ratio_type", "Coverage Ratio Type", choices = c("Single Value", "CSV File")),
+          conditionalPanel(
+            condition = "input.ratio_type == 'Single Value'",
+            numericInput("ratio_value", "Ratio Value", value = 1)
+          ),
+          conditionalPanel(
+            condition = "input.ratio_type == 'CSV File'",
+            textInput("ratio_file", "Ratio CSV Filename", value = "")
+          ),
+          numericInput("scale_ratio", "Scale Ratio", value = 0),
+          sliderInput("count_scaler", paste("Optional: Count Scaler"), value = 1, min = 0, max = 3, step = 0.1),
+          shiny::textInput("age_selection", "Optional: Age Selection (comma separated or leave blank for all)", value = ""),
+          shiny::textInput("time_selection", "Optional: Time Selection (comma separated or leave blank for all)", value = "")
+        ),
+      NULL
     )
   })
 
@@ -506,6 +566,7 @@ server_region <- function(input, output, session) {
   shiny::observeEvent(input$create_births_data_model, {
     counts_file_path <- file.path(global_config()$data_dir, input[[paste0("births_counts_file")]])
 
+    print("Creating births models")
     # Check if the counts file exists
     if (!file.exists(counts_file_path)) {
       shinyWidgets::sendSweetAlert(
@@ -519,22 +580,33 @@ server_region <- function(input, output, session) {
 
     input_counts <- utils::read.csv(counts_file_path)
 
-    newObject <- create_data_model(
-      dm_name = "births",
-      series_name = "births",
-      dm_type = "Exact Data Model",
-      counts_df = input_counts
-    )
+    #  Output of this is named by region
+    newObject <- purrr::map(
+      unique(input_counts$region),
+      \(unique_region) input_counts |>
+        tibble::as_tibble() |>
+        dplyr::filter(region == unique_region) |>
+        dplyr::select(-region) %>%
+        create_data_model(
+          dm_name = "births",
+          series_name = "births",
+          dm_type = "Exact Data Model",
+          time_select = r$time_selection,
+          counts_df = .
+        )
+    ) |>
+      purrr::set_names(unique(input_counts$region))
+
     currentList <- datamod_list()
-    newObjectList <- list()
-    newObjectList[[newObject$nm_data]] <- newObject
-    datamod_list(c(currentList, newObjectList))
+    currentList[["births"]] <- newObject
+    datamod_list(currentList)
   })
 
   # Observe the create_data_model button to add new data model to the datamod_list
   shiny::observeEvent(input$create_deaths_data_model, {
     counts_file_path <- file.path(global_config()$data_dir, input[[paste0("deaths_counts_file")]])
 
+    print("Creating deaths models")
     # Check if the counts file exists
     if (!file.exists(counts_file_path)) {
       shinyWidgets::sendSweetAlert(
@@ -546,18 +618,27 @@ server_region <- function(input, output, session) {
       return() # Exit the function if the file doesn't exist
     }
 
-    input_counts <- utils::read.csv(counts_file_path)
+    input_counts <- utils::read.csv(counts_file_path) |>
+      dplyr::filter(region %in% global_config()$region_selection)
 
-    newObject <- create_data_model(
-      dm_name = "deaths",
-      series_name = "deaths",
-      dm_type = "Exact Data Model",
-      counts_df = input_counts
-    )
+    newObject <- purrr::map(
+      unique(input_counts$region),
+      \(unique_region) input_counts |>
+        dplyr::filter(region == unique_region) |>
+        dplyr::select(-region) %>%
+        create_data_model(
+          dm_name = "deaths",
+          series_name = "deaths",
+          dm_type = "Exact Data Model",
+          time_select = r$time_selection,
+          counts_df = .
+        )
+    ) |>
+      purrr::set_names(unique(input_counts$region))
+
     currentList <- datamod_list()
-    newObjectList <- list()
-    newObjectList[[newObject$nm_data]] <- newObject
-    datamod_list(c(currentList, newObjectList))
+    currentList[["deaths"]] <- newObject
+    datamod_list(currentList)
   })
 
   # Observe the create_data_model button to add new data model to the datamod_list
@@ -587,30 +668,35 @@ server_region <- function(input, output, session) {
     } else if ((!grepl(",", time_select_str)) & (nchar(time_select_str) > 0)) {
       time_subset_vals <- as.numeric(time_select_str)
     } else {
-      time_subset_vals <- NULL
+      time_subset_vals <- unique(mainData()$time)
     }
 
-    newObject <- create_data_model(
-      dm_name = input$dm_name,
-      series_name = input$series_name,
-      dm_type = input$data_model,
-      counts_df = mainData(),
-      time_select = time_subset_vals,
-      age_select = age_subset_vals,
-      uncertainty_df = auxData()$uncertainty,
-      scale_df = auxData()$scale,
-      disp = auxData()$disp,
-      scale_ratio = auxData()$scale_ratio,
-      ratio = auxData()$ratio,
-      sd_scaler = auxData()$sd_scaler,
-      sd_overide = auxData()$sd_overide,
-      min_sd = auxData()$min_sd,
-      count_scaler = auxData()$count_scaler
-    )
+    if (!all(time_subset_vals %in% r$time_selection)) {
+      print("Time subset values outside of either time selection or system models, subsetting data model.")
+      time_subset_vals <- time_subset_vals[time_subset_vals %in% r$time_selection]
+    }
+    print("Setting up data model")
+    print(paste0("dm_name; ", input$dm_name))
+    print(paste0("series_name; ", input$series_name))
+
+    newObject <- purrr::map(
+      unique(mainData()$region),
+      \(unique_region) create_data_model_region(
+        dm_name = input$dm_name,
+        series_name = input$series_name,
+        dm_type = input$data_model,
+        counts_df = mainData(),
+        time_select = time_subset_vals,
+        age_select = age_subset_vals,
+        aux_data = auxData(),
+        unique_region = unique_region
+      )
+    ) |>
+      purrr::set_names(unique(mainData()$region))
+
     currentList <- datamod_list()
-    newObjectList <- list()
-    newObjectList[[newObject$nm_data]] <- newObject
-    datamod_list(c(currentList, newObjectList))
+    currentList[[input$dm_name]] <- newObject
+    datamod_list(currentList)
 
     # Clear form inputs
     updateTextInput(session, "dm_name", value = "")
@@ -647,11 +733,13 @@ server_region <- function(input, output, session) {
   output$loadedDataModels <- renderDT({
     dataModels <- datamod_list()
     if (length(dataModels) > 0) {
+      # TODO change this so that it takes the first element of each list
       modelSummaries <- lapply(dataModels, function(dm) {
+        # We take the first element here, all lists should be the same
         c(
-          dm_name = dm$nm_data,
-          series_name = dm$nm_series,
-          dm_type = class(dm)
+          dm_name = dm$dm_name,
+          series_name = dm$dm_series_name,
+          dm_type = dm$dm_type
         )
       })
       modelSummaryDF <- do.call(rbind, modelSummaries)
@@ -740,15 +828,45 @@ server_region <- function(input, output, session) {
     shiny::updateTabsetPanel(session, "tabs", selected = "dataModels")
   })
 
-  # Observe the 'fit_accout_model' button press to run accountTMB with loaded system models and selected data models
-  shiny::observeEvent(input$fit_account_model, {
-    req(filtered_data_models(), sysmod_list(), global_config()$output_dir, global_config()$seed_value)
+  # Create an observer to create the fit model,
+  # lets say that this can be overwritten, and exported
+  # should it be a list? ####
+  fit_model <- shiny::reactive({
+    shiny::req(
+      filtered_data_models,
+      filtered_system_models,
+      global_config
+    )
 
     models <- c("births", "deaths", "ins", "outs")
 
-    result <- accountTMB::estimate_account(datamods = filtered_data_models(), sysmods = filtered_system_models(), seed_in = global_config()$seed_value)
+    # TODO: Come up with better var names
+    dm <- filtered_data_models()
+    sm <- filtered_system_models()
+    run_config <- global_config()
 
-    output_file <- file.path(global_config()$output_dir, "fit_model_result.RDS")
+    print("Fitting model")
+    result <- furrr::future_map(
+      run_config$region_selection,
+      \(region){
+        accountTMB::estimate_account(
+          datamods = purrr::map(dm, purrr::pluck, region),
+          sysmods = purrr::map(sm, purrr::pluck, region),
+          seed_in = run_config$seed_value
+        )
+      },
+      .progress = TRUE,
+      .options = furrr::furrr_options(
+        globals = c("dm", "sm", "run_config"),
+        seed = run_config$seed_value
+      )
+    ) |>
+      purrr::set_names(
+        run_config$region_selection
+      )
+
+    output_file <- file.path(run_config$output_dir, "fit_model_result.RDS")
+    print("Saving model")
     saveRDS(result, output_file)
 
     showModal(modalDialog(
@@ -758,238 +876,192 @@ server_region <- function(input, output, session) {
       footer = NULL
     ))
 
-    diag <- result %>% accountTMB::diagnostics()
-    cohort_passes <- nrow(diag %>% dplyr::filter(.data$success == TRUE))
-    cohort_total <- nrow(diag)
+    shiny::updateSelectInput(session,
+      "region_preview",
+      choices = names(result)
+    )
 
-    output$cohortResults <- renderText({
-      paste0(cohort_passes, " out of ", cohort_total, " cohorts fitted.")
-    })
+    return(result)
+  }) |>
+    shiny::bindEvent(input$fit_account_model)
 
-    output$cohortDiagnostics <- DT::renderDT({
-      DT::datatable(diag %>% dplyr::filter(.data$success == FALSE))
-    })
-
-    pop_res <- result %>% accountTMB::augment_population(collapse = "cohort")
-    mig_res <- result %>%
-      accountTMB::augment_events(collapse = "age") %>%
-      dplyr::mutate(age = .data$time - .data$cohort) %>%
-      dplyr::select(-.data$cohort)
-
-    showModal(modalDialog(
-      title = "Population estimated",
-      "Population estimation completed.",
-      easyClose = TRUE,
-      footer = NULL
-    ))
-
-    pop_res_sub <- shiny::reactive(pop_res %>% dplyr::select(-c("population")))
-    mig_res_sub <- shiny::reactive(mig_res %>% dplyr::select(-c("ins", "outs")))
-
-    output_file <- file.path(global_config()$output_dir, "population_estimates.csv")
-    utils::write.csv(pop_res_sub(), output_file, row.names = FALSE)
-
-    output_file <- file.path(global_config()$output_dir, "migration_estimates.csv")
-    utils::write.csv(mig_res_sub(), output_file, row.names = FALSE)
-
-    # Update time_select_pop choices dynamically
-    shiny::observeEvent(pop_res_sub(), {
-      choices <- unique(pop_res_sub()$time)
-      shiny::updateSelectInput(session, "time_select_pop", choices = choices)
-    })
-
-    # Update time_select_mig choices dynamically
-    shiny::observeEvent(mig_res_sub(), {
-      choices <- unique(mig_res_sub()$time)
-      shiny::updateSelectInput(session, "time_select_mig", choices = choices)
-    })
-
-    output$population_table <- DT::renderDT({
-      DT::datatable(pop_res_sub())
-    })
-
-    output$migration_table <- DT::renderDT({
-      DT::datatable(mig_res_sub())
-    })
-
-
-    ## popEstimates Tab
-    output$popPlots <- shiny::renderUI({
-      plotly::plotlyOutput(outputId = "population_estimates")
-    })
-
-    output$population_estimates <- renderPlotly({
-      req(input$time_select_pop, input$sex_select_pop)
-
-      if (nzchar(input$compare_select_pop) & (input$compare_select_pop %in% colnames(pop_res_sub()))) {
-        p <- ggplot2::ggplot(
-          pop_res_sub() %>%
-            dplyr::filter(
-              .data$time == input$time_select_pop,
-              .data$sex == input$sex_select_pop
-            ),
-          ggplot2::aes(
-            x = .data$age,
-            ymin = .data$population.lower,
-            y = .data$population.fitted,
-            ymax = .data$population.upper
-          )
-        ) +
-          ggplot2::geom_pointrange(
-            fatten = 0.2,
-            col = "darkorange"
-          ) +
-          ggplot2::geom_point(ggplot2::aes(y = .data[[input$compare_select_pop]]),
-                              col = "darkblue",
-                              size = 0.3
-          ) +
-          ggplot2::ylab("Count") +
-          ggplot2::ggtitle("Population estimates")
-
-        plotly::ggplotly(p) # Convert to interactive plot
-      } else {
-        p <- ggplot2::ggplot(
-          pop_res_sub() %>%
-            dplyr::filter(
-              .data$time == input$time_select_pop,
-              .data$sex == input$sex_select_pop
-            ),
-          ggplot2::aes(
-            x = .data$age,
-            ymin = .data$population.lower,
-            y = .data$population.fitted,
-            ymax = .data$population.upper
-          )
-        ) +
-          ggplot2::geom_pointrange(
-            fatten = 0.2,
-            col = "darkorange"
-          ) +
-          ggplot2::ylab("Count") +
-          ggplot2::ggtitle("Population estimates")
-
-        plotly::ggplotly(p) # Convert to interactive plot
-      }
-    })
-
-
-    ## migEstimates Tab
-    output$immPlots <- shiny::renderUI({
-      plotlyOutput(outputId = "immigration_estimates")
-    })
-
-    output$immigration_estimates <- renderPlotly({
-      req(input$time_select_mig, input$sex_select_mig)
-
-      if (nzchar(input$compare_select_ins) & (input$compare_select_ins %in% colnames(mig_res_sub()))) {
-        p <- ggplot2::ggplot(
-          mig_res_sub() %>%
-            dplyr::filter(
-              .data$time == input$time_select_mig,
-              .data$sex == input$sex_select_mig
-            ),
-          ggplot2::aes(
-            x = .data$age,
-            ymin = .data$ins.lower,
-            y = .data$ins.fitted,
-            ymax = .data$ins.upper
-          )
-        ) +
-          ggplot2::geom_pointrange(
-            fatten = 0.2,
-            col = "darkorange"
-          ) +
-          ggplot2::geom_point(ggplot2::aes(y = .data[[input$compare_select_ins]]),
-                              col = "darkblue",
-                              size = 0.3
-          ) +
-          ggplot2::ylab("Count") +
-          ggplot2::ggtitle("Immigration estimates")
-
-        plotly::ggplotly(p) # Convert to interactive plot
-      } else {
-        p <- ggplot2::ggplot(
-          mig_res_sub() %>%
-            dplyr::filter(
-              .data$time == input$time_select_mig,
-              .data$sex == input$sex_select_mig
-            ),
-          ggplot2::aes(
-            x = .data$age,
-            ymin = .data$ins.lower,
-            y = .data$ins.fitted,
-            ymax = .data$ins.upper
-          )
-        ) +
-          ggplot2::geom_pointrange(
-            fatten = 0.2,
-            col = "darkorange"
-          ) +
-          ggplot2::ylab("Count") +
-          ggplot2::ggtitle("Immigration estimates")
-
-        plotly::ggplotly(p) # Convert to interactive plot
-      }
-    })
-
-    output$emPlots <- shiny::renderUI({
-      plotlyOutput(outputId = "emigration_estimates")
-    })
-
-    output$emigration_estimates <- renderPlotly({
-      req(input$time_select_mig, input$sex_select_mig)
-
-      if (nzchar(input$compare_select_outs) & (input$compare_select_outs %in% colnames(mig_res_sub()))) {
-        p <- ggplot2::ggplot(
-          mig_res_sub() %>%
-            dplyr::filter(
-              .data$time == input$time_select_mig,
-              .data$sex == input$sex_select_mig
-            ),
-          ggplot2::aes(
-            x = .data$age,
-            ymin = .data$outs.lower,
-            y = .data$outs.fitted,
-            ymax = .data$outs.upper
-          )
-        ) +
-          ggplot2::geom_pointrange(
-            fatten = 0.2,
-            col = "darkorange"
-          ) +
-          ggplot2::geom_point(ggplot2::aes(y = .data[[input$compare_select_outs]]),
-                              col = "darkblue",
-                              size = 0.3
-          ) +
-          ggplot2::ylab("") +
-          ggplot2::ggtitle("Emigration estimates")
-
-        plotly::ggplotly(p) # Convert to interactive plot
-      } else {
-        p <- ggplot2::ggplot(
-          mig_res_sub() %>%
-            dplyr::filter(
-              .data$time == input$time_select_mig,
-              .data$sex == input$sex_select_mig
-            ),
-          ggplot2::aes(
-            x = .data$age,
-            ymin = .data$outs.lower,
-            y = .data$outs.fitted,
-            ymax = .data$outs.upper
-          )
-        ) +
-          ggplot2::geom_pointrange(
-            fatten = 0.2,
-            col = "darkorange"
-          ) +
-          ggplot2::ylab("") +
-          ggplot2::ggtitle("Emigration estimates")
-
-        plotly::ggplotly(p) # Convert to interactive plot
-      }
-    })
+  res_diag <- shiny::reactive({
+    purrr::map(fit_model(), accountTMB::diagnostics)
   })
+
+  output$cohortResults <- renderText({
+    req(fit_model())
+
+    cohort_passes <- purrr::map(
+      res_diag(),
+      \(x) x |>
+        dplyr::filter(success == TRUE) |>
+        nrow()
+    ) |>
+      unlist() |>
+      sum()
+
+    cohort_total <- purrr::map(res_diag(), nrow) |>
+      unlist() |>
+      sum()
+
+
+    paste0(
+      cohort_passes,
+      " out of ",
+      cohort_total,
+      " cohorts fitted."
+    )
+  })
+
+  output$cohortDiagnostics <- DT::renderDT({
+    req(fit_model())
+
+    purrr::map(
+      res_diag(),
+      \(region_diag) region_diag |>
+        dplyr::filter(success == FALSE)
+    ) |>
+      dplyr::bind_rows(.id = "Region") |>
+      DT::datatable()
+  })
+
+  pop_res <- reactive({
+    pop_res <- purrr::map(
+      fit_model(),
+      \(x) accountTMB::augment_population(x, collapse = "cohort") |> dplyr::select(-population),
+      .progress = TRUE
+    ) |>
+      dplyr::bind_rows(.id = "region")
+
+    years <- pop_res |>
+      dplyr::arrange(time) |>
+      dplyr::pull(time) |>
+      unique()
+
+    updateSelectInput(session, "time_select_pop", choices = years)
+
+    print("generated pop ests")
+    output_file <- file.path(global_config()$output_dir, "population_estimates.csv")
+
+    utils::write.csv(pop_res, output_file, row.names = FALSE)
+
+    pop_res
+  }) |>
+    shiny::bindEvent(input$augment_pop)
+
+  mig_res <- reactive({
+    purrr::map(
+      fit_model(),
+      \(x) accountTMB::augment_events(x, collapse = "cohort"),
+      .progress = TRUE
+    )
+  }) |>
+    shiny::bindEvent(input$augment_mig)
+
+  shiny::observe({
+    dates <- unique(pop_res()$time)
+    latest_date <- max(dates)
+    shiny::updateSelectInput(session, "time_select_pop",
+      choices = dates,
+      selected = latest_date
+    )
+  }) |>
+    shiny::bindEvent(pop_res)
+
+  output$population_estimates <- renderPlotly({
+    if (nzchar(input$compare_select_pop) & (input$compare_select_pop %in% colnames(pop_res()))) {
+      p <- ggplot2::ggplot(
+        pop_res() %>%
+          dplyr::filter(
+            time == input$time_select_pop,
+            sex == input$sex_select_pop,
+            region == input$region_preview
+          ),
+        ggplot2::aes(
+          x = age,
+          ymin = population.lower,
+          y = population.fitted,
+          ymax = population.upper
+        )
+      ) +
+        ggplot2::geom_pointrange(
+          fatten = 0.2,
+          col = "darkorange"
+        ) +
+        ggplot2::geom_point(ggplot2::aes(y = .data[[input$compare_select_pop]]),
+          col = "darkblue",
+          size = 0.3
+        ) +
+        ggplot2::ylab("Count") +
+        ggplot2::ggtitle("Population estimates")
+
+      plotly::ggplotly(p) # Convert to interactive plot
+    } else {
+      p <- ggplot2::ggplot(
+        pop_res() %>%
+          dplyr::filter(
+            sex == input$sex_select_pop,
+            time == input$time_select_pop,
+            region == input$region_preview
+          ),
+        ggplot2::aes(
+          x = age,
+          ymin = population.lower,
+          y = population.fitted,
+          ymax = population.upper,
+          color = time
+        )
+      ) +
+        ggplot2::geom_pointrange(
+          fatten = 0.2,
+          col = "darkorange"
+        ) +
+        ggplot2::ylab("Count") +
+        ggplot2::ggtitle("Population estimates")
+
+      plotly::ggplotly(p) # Convert to interactive plot
+    }
+  })
+
+
+  mig_res_outputs <- observe({
+
+  }) |>
+    shiny::bindEvent(mig_res)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
   output$sys_model_checklist_1 <- shiny::renderUI({
     sysmods <- names(sysmod_list_list())
@@ -1052,14 +1124,38 @@ server_region <- function(input, output, session) {
     shiny::updateTabsetPanel(session, "tabs", selected = "setupComp")
   })
 
-
   shiny::observeEvent(input$compare_account_model, {
     req(filtered_data_models_1(), filtered_data_models_2(), sysmod_list(), global_config()$output_dir, global_config()$seed_value)
 
     models <- c("births", "deaths", "ins", "outs")
 
-    result_1 <- accountTMB::estimate_account(datamods = filtered_data_models_1(), sysmods = filtered_sys_models_1(), seed_in = global_config()$seed_value)
-    result_2 <- accountTMB::estimate_account(datamods = filtered_data_models_2(), sysmods = filtered_sys_models_2(), seed_in = global_config()$seed_value)
+    result_1 <- purrr::map(
+      global_config()$region_selection,
+      \(region){
+        accountTMB::estimate_account(
+          datamods = purrr::map(filtered_data_models_1(), purrr::pluck, region),
+          sysmods = purrr::map(filtered_sys_models_1(), purrr::pluck, region),
+          seed_in = global_config()$seed_value
+        )
+      }
+    ) |>
+      purrr::set_names(
+        global_config()$region_selection
+      )
+
+    result_2 <- purrr::map(
+      global_config()$region_selection,
+      \(region){
+        accountTMB::estimate_account(
+          datamods = purrr::map(filtered_data_models_2(), purrr::pluck, region),
+          sysmods = purrr::map(filtered_sys_models_2(), purrr::pluck, region),
+          seed_in = global_config()$seed_value
+        )
+      }
+    ) |>
+      purrr::set_names(
+        global_config()$region_selection
+      )
 
     showModal(modalDialog(
       title = "Model fitted",
@@ -1068,38 +1164,55 @@ server_region <- function(input, output, session) {
       footer = NULL
     ))
 
-    pop_comp_1 <- result_1 %>%
-      accountTMB::augment_population(collapse = "cohort")
-    mig_comp_1 <- result_1 %>%
-      accountTMB::augment_events(collapse = "age") %>%
-      dplyr::mutate(age = .data$time - .data$cohort)
-    pop_comp_2 <- result_2 %>%
-      accountTMB::augment_population(collapse = "cohort")
-    mig_comp_2 <- result_2 %>%
-      accountTMB::augment_events(collapse = "age") %>%
-      dplyr::mutate(age = .data$time - .data$cohort)
+    comp_1 <- extract_outputs_from_results_list(result_1)
+    pop_comp_1 <- comp_1$population_estimate
+    mig_comp_1 <- comp_1$migration_estimate
+
+    comp_2 <- extract_outputs_from_results_list(result_2)
+    pop_comp_2 <- comp_2$population_estimate
+    mig_comp_2 <- comp_2$migration_estimate
 
     pop_res_1 <- pop_comp_1 %>%
       dplyr::mutate(setup = 1) %>%
-      dplyr::select(c("age", "sex", "time", "population.lower", "population.fitted", "population.upper", "setup"))
-    mig_res_1 <- mig_comp_1 %>%
+      dplyr::rename(
+        population.lower = lower,
+        population.upper = upper,
+        population.fitted = mean
+      ) %>%
+      dplyr::select(c("age", "sex", "time", "region", "population.lower", "population.fitted", "population.upper", "setup"))
+
+    mig_res_1 <- merge(
+      mig_comp_1 %>% filter(account_name == "ins") %>% rename(ins.fitted = mean, ins.lower = lower, ins.upper = upper),
+      mig_comp_1 %>% filter(account_name == "outs") %>% rename(outs.fitted = mean, outs.lower = lower, outs.upper = upper),
+      by = c("age", "sex", "time", "region")
+    ) %>%
       dplyr::mutate(setup = 1) %>%
-      dplyr::select(c("age", "sex", "time", "ins.lower", "ins.fitted", "ins.upper", "outs.lower", "outs.fitted", "outs.upper", "setup"))
+      dplyr::select(c("age", "sex", "time", "region", "ins.lower", "ins.fitted", "ins.upper", "outs.lower", "outs.fitted", "outs.upper", "setup"))
 
     pop_res_2 <- pop_comp_2 %>%
       dplyr::mutate(setup = 2) %>%
-      dplyr::select(c("age", "sex", "time", "population.lower", "population.fitted", "population.upper", "setup"))
-    mig_res_2 <- mig_comp_2 %>%
+      dplyr::rename(
+        population.lower = lower,
+        population.upper = upper,
+        population.fitted = mean
+      ) %>%
+      dplyr::select(c("age", "sex", "time", "region", "population.lower", "population.fitted", "population.upper", "setup"))
+
+    mig_res_2 <- merge(
+      mig_comp_2 %>% filter(account_name == "ins") %>% rename(ins.fitted = mean, ins.lower = lower, ins.upper = upper),
+      mig_comp_2 %>% filter(account_name == "outs") %>% rename(outs.fitted = mean, outs.lower = lower, outs.upper = upper),
+      by = c("age", "sex", "time", "region")
+    ) %>%
       dplyr::mutate(setup = 2) %>%
-      dplyr::select(c("age", "sex", "time", "ins.lower", "ins.fitted", "ins.upper", "outs.lower", "outs.fitted", "outs.upper", "setup"))
+      dplyr::select(c("age", "sex", "time", "region", "ins.lower", "ins.fitted", "ins.upper", "outs.lower", "outs.fitted", "outs.upper", "setup"))
 
     pop_res_comp <- shiny::reactive(rbind(pop_res_1, pop_res_2))
     mig_res_comp <- shiny::reactive(rbind(mig_res_1, mig_res_2))
 
-    pop_comp_1_cols <- shiny::reactive(pop_comp_1)
-    pop_comp_2_cols <- shiny::reactive(pop_comp_2)
-    mig_comp_1_cols <- shiny::reactive(mig_comp_1)
-    mig_comp_2_cols <- shiny::reactive(mig_comp_2)
+    pop_comp_1_cols <- shiny::reactive(pop_res_1)
+    pop_comp_2_cols <- shiny::reactive(pop_res_2)
+    mig_comp_1_cols <- shiny::reactive(mig_res_1)
+    mig_comp_2_cols <- shiny::reactive(mig_res_2)
 
     shiny::showModal(modalDialog(
       title = "Populations estimated",
@@ -1112,12 +1225,12 @@ server_region <- function(input, output, session) {
     shiny::observeEvent(pop_res_comp(), {
       endings_to_remove <- c(".fitted", ".lower", ".upper")
       time_choices <- unique(pop_res_comp()$time)
-      comp_pop1_choices <- colnames(pop_comp_1_cols())[!(colnames(pop_comp_1_cols()) %in% c("age", "sex", "time", "setup", "population", "population.fitted", "population.lower", "population.upper"))]
-      comp_pop2_choices <- colnames(pop_comp_2_cols())[!(colnames(pop_comp_2_cols()) %in% c("age", "sex", "time", "setup", "population", "population.fitted", "population.lower", "population.upper"))]
-      comp_ins1_choices <- colnames(mig_comp_1_cols())[!(colnames(mig_comp_1_cols()) %in% c("age", "sex", "time", "setup", "ins", "ins.fitted", "ins.lower", "ins.upper", "outs", "births", "deaths", "outs.fitted", "cohort", "outs.lower", "outs.upper"))]
-      comp_ins2_choices <- colnames(mig_comp_2_cols())[!(colnames(mig_comp_2_cols()) %in% c("age", "sex", "time", "setup", "ins", "ins.fitted", "ins.lower", "ins.upper", "outs", "births", "deaths", "outs.fitted", "cohort", "outs.lower", "outs.upper"))]
-      comp_outs1_choices <- colnames(mig_comp_1_cols())[!(colnames(mig_comp_1_cols()) %in% c("age", "sex", "time", "setup", "ins", "ins.fitted", "ins.lower", "ins.upper", "outs", "births", "deaths", "outs.fitted", "cohort", "outs.lower", "outs.upper"))]
-      comp_outs2_choices <- colnames(mig_comp_2_cols())[!(colnames(mig_comp_2_cols()) %in% c("age", "sex", "time", "setup", "ins", "ins.fitted", "ins.lower", "ins.upper", "outs", "births", "deaths", "outs.fitted", "cohort", "outs.lower", "outs.upper"))]
+      comp_pop1_choices <- colnames(pop_comp_1_cols())[!(colnames(pop_comp_1_cols()) %in% c("age", "sex", "time", "region", "setup", "population", "population.fitted", "population.lower", "population.upper"))]
+      comp_pop2_choices <- colnames(pop_comp_2_cols())[!(colnames(pop_comp_2_cols()) %in% c("age", "sex", "time", "region", "setup", "population", "population.fitted", "population.lower", "population.upper"))]
+      comp_ins1_choices <- colnames(mig_comp_1_cols())[!(colnames(mig_comp_1_cols()) %in% c("age", "sex", "time", "region", "setup", "ins", "ins.fitted", "ins.lower", "ins.upper", "outs", "births", "deaths", "outs.fitted", "cohort", "outs.lower", "outs.upper"))]
+      comp_ins2_choices <- colnames(mig_comp_2_cols())[!(colnames(mig_comp_2_cols()) %in% c("age", "sex", "time", "region", "setup", "ins", "ins.fitted", "ins.lower", "ins.upper", "outs", "births", "deaths", "outs.fitted", "cohort", "outs.lower", "outs.upper"))]
+      comp_outs1_choices <- colnames(mig_comp_1_cols())[!(colnames(mig_comp_1_cols()) %in% c("age", "sex", "time", "region", "setup", "ins", "ins.fitted", "ins.lower", "ins.upper", "outs", "births", "deaths", "outs.fitted", "cohort", "outs.lower", "outs.upper"))]
+      comp_outs2_choices <- colnames(mig_comp_2_cols())[!(colnames(mig_comp_2_cols()) %in% c("age", "sex", "time", "region", "setup", "ins", "ins.fitted", "ins.lower", "ins.upper", "outs", "births", "deaths", "outs.fitted", "cohort", "outs.lower", "outs.upper"))]
 
 
       shiny::updateSelectInput(session, "time_select_comp", choices = time_choices)
@@ -1143,7 +1256,8 @@ server_region <- function(input, output, session) {
               dplyr::filter(
                 .data$time == input$time_select_comp,
                 .data$sex == input$sex_select_comp,
-                .data$setup == 1
+                .data$setup == 1,
+                .data$region == input$region_preview
               ),
             ggplot2::aes(
               x = .data$age,
@@ -1178,7 +1292,8 @@ server_region <- function(input, output, session) {
               dplyr::filter(
                 .data$time == input$time_select_comp,
                 .data$sex == input$sex_select_comp,
-                .data$setup == 2
+                .data$setup == 2,
+                .data$region == input$region_preview
               ),
             ggplot2::aes(
               x = .data$age,
@@ -1208,12 +1323,13 @@ server_region <- function(input, output, session) {
         }
       } else if (input$setup_select == "Both") {
         if (nzchar(input$compare_select_pop_1) & (input$compare_select_pop_1 %in% colnames(pop_comp_1_cols())) &
-            nzchar(input$compare_select_pop_2) & (input$compare_select_pop_2 %in% colnames(pop_comp_2_cols()))) {
+          nzchar(input$compare_select_pop_2) & (input$compare_select_pop_2 %in% colnames(pop_comp_2_cols()))) {
           p <- ggplot2::ggplot(
             pop_res_comp() %>%
               dplyr::filter(
                 .data$time == input$time_select_comp,
-                .data$sex == input$sex_select_comp
+                .data$sex == input$sex_select_comp,
+                .data$region == input$region_preview
               ),
             ggplot2::aes(
               x = .data$age,
@@ -1263,13 +1379,14 @@ server_region <- function(input, output, session) {
 
       if (input$setup_select == "Setup 1") {
         if (nzchar(input$compare_select_ins_1) & (input$compare_select_ins_1 %in% colnames(mig_comp_1_cols())) &
-            input$time_select_comp %in% unique(mig_res_comp()$time)) {
+          input$time_select_comp %in% unique(mig_res_comp()$time)) {
           p <- ggplot2::ggplot(
             mig_res_comp() %>%
               dplyr::filter(
                 .data$time == input$time_select_comp,
                 .data$sex == input$sex_select_comp,
-                .data$setup == 1
+                .data$setup == 1,
+                .data$region == input$region_preview
               ),
             ggplot2::aes(
               x = .data$age,
@@ -1299,13 +1416,14 @@ server_region <- function(input, output, session) {
         }
       } else if (input$setup_select == "Setup 2") {
         if (nzchar(input$compare_select_ins_2) & (input$compare_select_ins_2 %in% colnames(mig_comp_2_cols())) &
-            input$time_select_comp %in% unique(mig_res_comp()$time)) {
+          input$time_select_comp %in% unique(mig_res_comp()$time)) {
           p <- ggplot2::ggplot(
             mig_res_comp() %>%
               dplyr::filter(
                 .data$time == input$time_select_comp,
                 .data$sex == input$sex_select_comp,
-                .data$setup == 2
+                .data$setup == 2,
+                .data$region == input$region_preview
               ),
             ggplot2::aes(
               x = .data$age,
@@ -1335,13 +1453,14 @@ server_region <- function(input, output, session) {
         }
       } else if (input$setup_select == "Both") {
         if (nzchar(input$compare_select_ins_1) & (input$compare_select_ins_1 %in% colnames(mig_comp_1_cols())) &
-            nzchar(input$compare_select_ins_2) & (input$compare_select_ins_2 %in% colnames(mig_comp_2_cols())) &
-            input$time_select_comp %in% unique(mig_res_comp()$time)) {
+          nzchar(input$compare_select_ins_2) & (input$compare_select_ins_2 %in% colnames(mig_comp_2_cols())) &
+          input$time_select_comp %in% unique(mig_res_comp()$time)) {
           p <- ggplot2::ggplot(
             mig_res_comp() %>%
               dplyr::filter(
                 .data$time == input$time_select_comp,
-                .data$sex == input$sex_select_comp
+                .data$sex == input$sex_select_comp,
+                .data$region == input$region_preview
               ),
             ggplot2::aes(
               x = .data$age,
@@ -1391,13 +1510,14 @@ server_region <- function(input, output, session) {
 
       if (input$setup_select == "Setup 1") {
         if (nzchar(input$compare_select_outs_1) & (input$compare_select_outs_1 %in% colnames(mig_comp_1_cols())) &
-            input$time_select_comp %in% unique(mig_res_comp()$time)) {
+          input$time_select_comp %in% unique(mig_res_comp()$time)) {
           p <- ggplot2::ggplot(
             mig_res_comp() %>%
               dplyr::filter(
                 .data$time == input$time_select_comp,
                 .data$sex == input$sex_select_comp,
-                .data$setup == 1
+                .data$setup == 1,
+                .data$region == input$region_preview
               ),
             ggplot2::aes(
               x = .data$age,
@@ -1427,13 +1547,14 @@ server_region <- function(input, output, session) {
         }
       } else if (input$setup_select == "Setup 2") {
         if (nzchar(input$compare_select_outs_2) & (input$compare_select_outs_2 %in% colnames(mig_comp_2_cols())) &
-            input$time_select_comp %in% unique(mig_res_comp()$time)) {
+          input$time_select_comp %in% unique(mig_res_comp()$time)) {
           p <- ggplot2::ggplot(
             mig_res_comp() %>%
               dplyr::filter(
                 .data$time == input$time_select_comp,
                 .data$sex == input$sex_select_comp,
-                .data$setup == 2
+                .data$setup == 2,
+                .data$region == input$region_preview
               ),
             ggplot2::aes(
               x = .data$age,
@@ -1463,13 +1584,14 @@ server_region <- function(input, output, session) {
         }
       } else if (input$setup_select == "Both") {
         if (nzchar(input$compare_select_outs_1) & (input$compare_select_outs_1 %in% colnames(mig_comp_1_cols())) &
-            nzchar(input$compare_select_outs_2) & (input$compare_select_outs_2 %in% colnames(mig_comp_2_cols())) &
-            input$time_select_comp %in% unique(mig_res_comp()$time)) {
+          nzchar(input$compare_select_outs_2) & (input$compare_select_outs_2 %in% colnames(mig_comp_2_cols())) &
+          input$time_select_comp %in% unique(mig_res_comp()$time)) {
           p <- ggplot2::ggplot(
             mig_res_comp() %>%
               dplyr::filter(
                 .data$time == input$time_select_comp,
-                .data$sex == input$sex_select_comp
+                .data$sex == input$sex_select_comp,
+                .data$region == input$region_preview
               ),
             ggplot2::aes(
               x = .data$age,
@@ -1623,4 +1745,28 @@ server_region <- function(input, output, session) {
       plotly::ggplotly(p)
     })
   })
+
+  # Validation observers ####
+  # Creating an observer to check the filename
+  shiny::observe(
+    # check_headers(input$births_rates_files(), c("region","age","time","count","midint_pop_est","raw_rate","rate","ma"))
+    {
+      print("Changing filename")
+      iv$validate()
+    }
+  ) |>
+    shiny::bindEvent(input$births_rates_file,
+      input$deaths_rates_file,
+      input$ins_rates_file,
+      input$outs_rates_file,
+      ignoreInit = TRUE,
+      ignoreNULL = TRUE
+    )
+
+  # Create a validator bound to the rates files
+  iv <- shinyvalidate::InputValidator$new()
+  iv$add_rule("births_rates_file", ~ check_headers(., c("region", "age", "time", "count", "midint_pop_est", "raw_rate", "rate", "ma")), "Bad File")
+  # iv$enable()
+
+  # Create an observer to find the maximal region
 }

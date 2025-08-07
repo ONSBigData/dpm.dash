@@ -39,6 +39,10 @@ ui_region <- shinydashboard::dashboardPage(
                                shinydashboard::menuSubItem("Fit Models", tabName = "fitModels", icon = icon("sliders-h")),
                                shinydashboard::menuSubItem("Compare Population Estimates", tabName = "compPopEstimates", icon = icon("people-roof")),
                                shinydashboard::menuSubItem("Compare Migration Estimates", tabName = "compMigEstimates", icon = icon("plane"))
+      ),
+      shiny::selectInput("region_preview",
+                         label = 'Region to preview',
+                         choices = NULL
       )
     )
   ),
@@ -104,33 +108,10 @@ ui_region <- shinydashboard::dashboardPage(
               ),
               "Exporting the system models setup will save a .RDS file of the format <setup_name>_sysmods.RDS in the provided Input Data Directory (global config), which can be used to quickly import a previous setup."
             ),
+            #TODO: potentially change this to it's own shinymodule?
+            # would help in aligning the server and ui functions
             lapply(c("births", "deaths", "ins", "outs"), function(model) {
-              shinydashboard::box(
-                title = paste(model, "System Model"), width = 6, status = "primary",
-                fluidRow(
-                  shinydashboard::box(
-                    title = "Required", width = 12,
-                    shiny::textInput(paste0(model, "_rates_file"), paste(model, "Rates CSV Filename"), value = paste0("sm_", model, ".csv")),
-                    shiny::radioButtons(paste0(model, "_disp_type"), "Dispersion Input Type", choices = c("Single Value", "CSV File")),
-                    shiny::conditionalPanel(
-                      condition = sprintf("input.%s_disp_type == 'Single Value'", model),
-                      numericInput(paste0(model, "_disp_value"), paste(model, "Dispersion Value"), value = 0.05)
-                    ),
-                    shiny::conditionalPanel(
-                      condition = sprintf("input.%s_disp_type == 'CSV File'", model),
-                      shiny::textInput(paste0(model, "_disp_file"), paste(model, "Dispersion CSV Filename"))
-                    )
-                  )
-                ),
-                fluidRow(
-                  shinydashboard::box(
-                    title = "Optional", width = 12, collapsible = TRUE, collapsed = TRUE,
-                    numericInput(paste0(model, "_lower_rate_limit"), paste("Optional: ", model, " Lower Rate Limit"), value = 1e-6),
-                    sliderInput(paste0(model, "_rate_scale"), paste("Optional: ", model, " Rate Scaler"), value = 1, min = 0, max = 3, step = 0.1),
-                    numericInput(paste0(model, "_rate_overide"), paste("Optional: ", model, " Rate Set"), value = -1)
-                  )
-                )
-              )
+              mod_system_models_ui(id = model, sys_mod_type = model)
             }),
             shiny::textInput("sysmods_name", "System Models Setup Name:", value = "default"),
             shiny::actionButton("create_system_models", "Create System Models"),
@@ -253,25 +234,9 @@ ui_region <- shinydashboard::dashboardPage(
         ),
         shiny::fluidRow(
           shinydashboard::box(
-            title = "Cohort Results", solidHeader = TRUE, status = "primary",
-            column(
-              width = 6,
-              shiny::textOutput("cohortResults")
-            )
-          ),
-          shinydashboard::box(
-            title = "Cohort Failures", solidHeader = TRUE, status = "primary",
-            column(
-              width = 6,
+            title = "Cohort Results", solidHeader = TRUE, status = "primary",width = 12,
+              shiny::textOutput("cohortResults"),
               DT::DTOutput("cohortDiagnostics")
-            )
-          )
-        ),
-        shiny::fluidRow(
-          shinydashboard::box(
-            title = "Model summary", width = 12, solidHeader = TRUE, status = "primary",
-            DT::DTOutput("population_table"),
-            DT::DTOutput("migration_table")
           )
         ),
         shiny::fluidRow(
@@ -281,12 +246,15 @@ ui_region <- shinydashboard::dashboardPage(
       ),
       shinydashboard::tabItem("Population Estimates",
                               tabName = "popEstimates",
+                              shiny::fluidRow(shiny::actionButton("augment_pop", "Generate population estimates")),
                               shiny::fluidRow(
                                 shiny::column(4, selectInput("time_select_pop", "Time", choices = NULL)),
                                 shiny::column(4, selectInput("sex_select_pop", "Sex", choices = c("Female", "Male"))),
                                 shiny::column(4, textInput("compare_select_pop", "Compare Column"))
                               ),
-                              uiOutput("popPlots"),
+                              DT::DTOutput("example_pop_dt"),
+                              DT::DTOutput("population_table"),
+                              plotly::plotlyOutput("population_estimates"),
                               shiny::fluidRow(
                                 shiny::column(width = 2, actionButton("goFM", "Back"), icon = icon("arrow-left")),
                                 shiny::column(width = 2, actionButton("goME", "Continue"), icon = icon("arrow-right")),
@@ -294,8 +262,10 @@ ui_region <- shinydashboard::dashboardPage(
       ),
       shinydashboard::tabItem("Migration Estimates",
                               tabName = "migEstimates",
+                              shiny::fluidRow(shiny::actionButton("augment_mig", "Generate migration estimates")),
                               shiny::fluidRow(
                                 shiny::column(4, selectInput("time_select_mig", "Time", choices = NULL)),
+                                DT::DTOutput("migration_table"),
                                 shiny::column(4, selectInput("sex_select_mig", "Sex", choices = c("Female", "Male"))),
                                 shiny::column(4, textInput("compare_select_ins", "Compare Ins")),
                                 shiny::column(4, textInput("compare_select_outs", "Compare Outs"))
@@ -327,12 +297,19 @@ ui_region <- shinydashboard::dashboardPage(
           shinydashboard::box(
             title = "Setup (2) Data Models", width = 6, solidHeader = TRUE, status = "primary",
             shiny::uiOutput("data_model_checklist_2")
+          ),
+          #TODO: ADD in a region selector here
+          shinydashboard::box(
+            title = "Region Selection", width = 6, solidHeader = TRUE, status = "primary",
+            shinyWidgets::pickerInput("output_region_selection", choices = c())
           )
         ),
         shiny::fluidRow(
           shinydashboard::box(
             width = 12, solidHeader = TRUE, status = "primary",
-            shiny::actionButton("compare_account_model", "Compare Models")
+            shiny::actionButton("compare_account_model",
+                                label = "Compare Models",
+                                choices = c())
           )
         ),
         shiny::fluidRow(
