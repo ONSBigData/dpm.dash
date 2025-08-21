@@ -22,18 +22,17 @@ create_data_model_region <- function(
     time_select,
     age_select,
     aux_data,
-    unique_region){
-
+    unique_region) {
   # TODO: May be good to have a function which wraps around all auxillary
   # data and handles the unique region aspect, or in general write a better
   # data model region function.
-  if(!is.null(aux_data$uncertainty)){
+  if (!is.null(aux_data$uncertainty)) {
     aux_data$uncertainty <- aux_data$uncertainty |>
       dplyr::filter(region == unique_region) |>
       dplyr::select(-region)
   }
 
-  if(!is.null(aux_data$ratio) & is.data.frame(aux_data$ratio)){
+  if (!is.null(aux_data$ratio) & is.data.frame(aux_data$ratio)) {
     aux_data$ratio <- aux_data$ratio |>
       dplyr::filter(region == unique_region) |>
       dplyr::select(-region)
@@ -156,8 +155,10 @@ create_system_model_region <- function(model_name,
     rates_df <- rates_df[rates_df$time %in% time_selection, ]
   }
   rates_df <- rates_df |>
-    dplyr::select(tidyselect::all_of(c("region","time","age","rate")),
-                  tidyselect::any_of("sex")) |>
+    dplyr::select(
+      tidyselect::all_of(c("region", "time", "age", "rate")),
+      tidyselect::any_of("sex")
+    ) |>
     dplyr::filter(region %in% region_selection) |>
     dplyr::mutate(rate = dplyr::case_when(
       rate < lower_rates_limit ~ lower_rates_limit,
@@ -165,7 +166,7 @@ create_system_model_region <- function(model_name,
     )) |>
     dplyr::rename(mean = rate)
 
-  if("sex" %in% colnames(rates_df)){
+  if ("sex" %in% colnames(rates_df)) {
     rates_df <- rates_df |>
       dplyr::mutate(sex = stringr::str_to_title(sex))
   }
@@ -176,12 +177,12 @@ create_system_model_region <- function(model_name,
   }
 
   # do a check to see if disp is a dataframe
-  if("region" %in% colnames(disp) & is.data.frame(disp)){
+  if ("region" %in% colnames(disp) & is.data.frame(disp)) {
     # If it's a dataframe, split it
     disp <- split(disp, disp$region)
     # Once split, check if it's a dataframe of one row dataframes
     # TODO: I think this method could be done better? Works for now
-    if(all(lapply(disp, nrow) == 1)){
+    if (all(lapply(disp, nrow) == 1)) {
       disp <- purrr::map(disp, \(x) dplyr::pull(x, disp))
     } else {
       disp <- purrr::map(disp, \(x) dplyr::select(x, -region))
@@ -195,7 +196,7 @@ create_system_model_region <- function(model_name,
       dplyr::select(-region) |>
       accountTMB::sysmod(
         # TODO: Could have a better way to set disp here?
-        disp = if(is.double(disp)) disp else disp[[unique_region]],
+        disp = if (is.double(disp)) disp else disp[[unique_region]],
         nm_series = model_name
       )
   ) |>
@@ -261,25 +262,29 @@ create_data_model <- function(dm_name, series_name, dm_type, counts_df,
                               disp = NULL, scale_ratio = 0, ratio = 1,
                               sd_scaler = 1, sd_overide = -1, min_sd = 0,
                               count_scaler = 1) {
-  if("sex" %in% colnames(counts_df)){
+  if ("sex" %in% colnames(counts_df)) {
     counts_df <- counts_df |>
       dplyr::mutate(sex = stringr::str_to_title(sex))
   }
 
-  if("sex" %in% colnames(uncertainty_df)){
+  if ("sex" %in% colnames(uncertainty_df)) {
     uncertainty_df <- uncertainty_df |>
       dplyr::mutate(sex = stringr::str_to_title(sex))
   }
 
-  if(!is.null(counts_df) & !is.null(uncertainty_df)){
-    joining_cols <- intersect(c("age","time","sex","region"),
-                              colnames(counts_df))
+  if (!is.null(counts_df) & !is.null(uncertainty_df)) {
+    joining_cols <- intersect(
+      c("age", "time", "sex", "region"),
+      colnames(counts_df)
+    )
     counts_df <- dplyr::semi_join(counts_df,
-                                  uncertainty_df,
-                                  by = joining_cols)
+      uncertainty_df,
+      by = joining_cols
+    )
     uncertainty_df <- dplyr::semi_join(uncertainty_df,
-                                       counts_df,
-                                       by = joining_cols)
+      counts_df,
+      by = joining_cols
+    )
   }
   # Default null time select is all available time
   if (is.null(time_select)) {
@@ -391,10 +396,12 @@ create_data_model <- function(dm_name, series_name, dm_type, counts_df,
 #' @param delimiter text delimeter to split headers by
 check_headers <- function(filepath,
                           comparison_string_vector,
-                          delimiter = ','){
+                          delimiter = ",") {
   print(filepath)
-  assertthat::assert_that(is.character(comparison_string_vector),
-                         assertthat::is.readable(filepath))
+  assertthat::assert_that(
+    is.character(comparison_string_vector),
+    assertthat::is.readable(filepath)
+  )
 
   headers <- readLines(filepath, n = 1) |>
     strsplit(delimiter) |>
@@ -409,13 +416,14 @@ check_headers <- function(filepath,
 #' @param endpoint API endpoint to send request to
 #'
 #' @returns API response
-send_object_to_API <- function(object, endpoint){
+send_object_to_API <- function(object, endpoint) {
   enc_stream < -rawConnection(raw(), "r+")
   saveRDS(object, enc_stream)
   seek(enc_stream, 0)
   resbin <- httr::POST(
     endpoint,
-    body = base64enc::base64encode(enc_stream))$content(as = 'text')
+    body = base64enc::base64encode(enc_stream)
+  )$content(as = "text")
   close(enc_stream)
 
   dec_stream <- rawConnection(resbin, "r")
@@ -423,7 +431,6 @@ send_object_to_API <- function(object, endpoint){
   out <- readRDS(dec_stream)
   close(dec_stream)
   return(out)
-
 }
 
 #' Extract Population and Migration Estimates from Results List
@@ -457,11 +464,18 @@ send_object_to_API <- function(object, endpoint){
 #' @importFrom accountTMB augment_population augment_events
 #' @importFrom dplyr mutate bind_rows
 #' @export
-extract_outputs_from_results_list <- function(res_list, combined = FALSE) {
+extract_outputs_from_results_list <- function(res_list, combined = FALSE, debug = FALSE) {
   pop_est <- data.frame()
   mig_est <- data.frame()
   for (res_name in names(res_list)) {
-    pop <- res_list[[res_name]] %>%
+    tstart <- Sys.time()
+    res <- res_list[[res_name]]
+
+    if (length(res$seed_list) == 9) {
+      res <- accountTMB:::convert_old_accountTMB_results(res, seed_in = 4193)
+    }
+
+    pop <- res %>%
       accountTMB::augment_population(collapse = "cohort") %>%
       mutate(region = res_name, account_name = "population") %>%
       select(age, sex, time, region, account_name, population.fitted, population.lower, population.upper) %>%
@@ -470,7 +484,7 @@ extract_outputs_from_results_list <- function(res_list, combined = FALSE) {
         lower = population.lower,
         upper = population.upper
       )
-    mig_comb <- res_list[[res_name]]  %>%
+    mig_comb <- res %>%
       accountTMB::augment_events(collapse = "age") %>%
       dplyr::mutate(age = .data$time - .data$cohort) %>%
       mutate(region = res_name)
@@ -495,6 +509,7 @@ extract_outputs_from_results_list <- function(res_list, combined = FALSE) {
     )
     pop_est <- bind_rows(pop_est, pop)
     mig_est <- bind_rows(mig_est, mig)
+    if (debug) print(paste0(res_name, " completed in ", round(difftime(Sys.time(), tstart, units = "secs"), 2), " seconds"))
   }
 
   if (combined) {
