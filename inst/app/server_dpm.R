@@ -1,3 +1,6 @@
+# ==============================================================================
+# === 4. SERVER LOGIC
+# ==============================================================================
 #' Server Function for Shiny Application
 #'
 #' This function defines the server-side logic for a Shiny application, managing reactive values and
@@ -27,99 +30,613 @@
 #' @import shinyWidgets
 #' @import plotly
 #' @import DT
-#' @import accountTMB
+#' @import dpmaccount
 #' @import rlang
+#' @import shinydashboard
+#' @import shinycssloaders
+#' @import bage
+#' @import sortable
+#' @import rvec
+#' @import ggplot2
+#' @import stringr
+server_dpm <- function(input, output, session) {
+  # ============================================================================
+  # === A. SHARED & GLOBAL REACTIVE VALUES
+  # ============================================================================
+  global_config <- reactiveVal(list(
+    data_dir = here::here("data/"),
+    output_dir = here::here("output/"),
+    time_selection = NULL,
+    seed_value = numbers::nextPrime(as.integer(Sys.time()))
+  ))
 
-# The main server function that orchestrates the application's backend logic.
-server_sens <- function(input, output, session) {
-  # Define the global reactive values which store the state of the application.
-  # These values will be updated as the user interacts with the UI and will trigger
-  # re-rendering of relevant outputs.
+  # --- Bage (Step 1) Reactive Values ---
+  uploaded_data <- reactiveVal(NULL)
+  fitted_bage_models_list_rv <- reactiveVal(list()) # MODIFIED for multi-model
+  interactions_list <- reactiveVal(list())
+  sim_interactions_list <- reactiveVal(list())
+  replicate_data_rv <- reactiveVal(NULL)
+  simulation_results_rv <- reactiveVal(NULL)
+  forecast_results <- reactiveVal(NULL)
+  generated_bage_code_string <- reactiveVal("")
 
-  datamod_list <- reactiveVal(list()) # Stores a named list of all defined data models.
-  global_config <- reactiveVal(list()) # Stores user-defined global configuration parameters (e.g., directories, seed).
-  sysmod_list <- reactiveVal(list()) # Stores the components (births, deaths, ins, outs) of the *currently active* or *last created* system model setup.
-  sysmod_list_list <- reactiveVal(list()) # Stores a named list of multiple system model setups. Each setup is a list of 4 system model components.
-  selected_data_models <- reactiveVal(list()) # This reactive value was noted as potentially redundant; its usage should be verified. If unused, it can be removed.
-  sensitivity_results_list <- reactiveVal(list()) # Stores a list of dataframes, each containing results from a single run within a sensitivity analysis.
-  sensitivity_varied_param_info <- reactiveVal(NULL) # Stores information about the parameter being varied in the sensitivity analysis (name, type, component, short name).
+  # --- DPM (Step 2) Reactive Values ---
+  datamod_list <- reactiveVal(list())
+  sysmod_list <- reactiveVal(list()) # Current sysmod setup
+  sysmod_list_list <- reactiveVal(list()) # List of all sysmod setups
+  population_estimates_single_fit <- reactiveVal(NULL)
+  migration_estimates_single_fit <- reactiveVal(NULL)
+  comparison_results <- reactiveVal(NULL)
+  sensitivity_results_list <- reactiveVal(NULL)
+  sensitivity_varied_param_info <- reactiveVal(NULL)
+  generated_dpm_code_string <- reactiveVal("")
 
-  ##############################################################################
-  ############################## globalConfig Tab ##############################
-  ##############################################################################
-  # This section handles logic related to the 'Global Configuration' tab.
 
-  # Define default values for global configuration parameters.
-  default_output_dir <- here::here("output/") # Default directory for saving outputs, constructed relative to the project root.
-  default_data_dir <- here::here("data/") # Default directory for input data, constructed relative to the project root.
-  default_seed_value <- numbers::nextPrime(as.integer(Sys.time())) # Generates a pseudo-random prime number based on the current time as the default seed for reproducibility.
-
-  # Observer for the 'Save Global Configuration' button.
-  # This event triggers when the user clicks the button to save their global settings.
-  shiny::observeEvent(input$save_global_config, {
-    # Update the 'global_config' reactiveVal with the values from the UI inputs.
-    # If an input field is empty, the corresponding default value is used.
+  # ============================================================================
+  # === B. GLOBAL CONFIGURATION LOGIC
+  # ============================================================================
+  observeEvent(input$save_global_config, {
     global_config(list(
-      data_dir = if (nzchar(input$global_data_dir)) input$global_data_dir else default_data_dir, # Use user input or default for data directory.
-      output_dir = if (nzchar(input$global_output_dir)) input$global_output_dir else default_output_dir, # Use user input or default for output directory.
-      time_selection = if (nzchar(input$global_time_selection)) parse_values(input$global_time_selection) else NULL, # Parse comma-separated time selection string to integer vector.
-      seed_value = if (nzchar(input$global_seed_value)) as.integer(input$global_seed_value) else default_seed_value # Use user input or default for seed value.
+      data_dir = if (nzchar(input$global_data_dir)) input$global_data_dir else here::here("data/"),
+      output_dir = if (nzchar(input$global_output_dir)) input$global_output_dir else here::here("output/"),
+      time_selection = if (nzchar(input$global_time_selection)) parse_values(input$global_time_selection) else NULL,
+      seed_value = if (!is.na(input$global_seed_value)) as.integer(input$global_seed_value) else numbers::nextPrime(as.integer(Sys.time()))
     ))
-    # Display a modal dialog to confirm that the global configuration has been saved.
-    shiny::showModal(modalDialog(
+    showModal(modalDialog(
       title = "Global Configuration Saved",
-      "Global configuration parameters have been saved successfully.",
-      easyClose = TRUE, # Allows closing the modal by clicking outside or pressing Esc.
-      footer = NULL # No footer buttons in the modal.
+      "Global settings have been updated.",
+      easyClose = TRUE, footer = NULL
     ))
   })
-  ##############################################################################
 
-  ##############################################################################
-  ############################## systemModels Tab ##############################
-  ##############################################################################
-  # This section handles logic related to the 'System Models' tab, including creation,
-  # display, import, export, and deletion of system model setups.
 
-  # Observer for the 'Create System Models' button.
-  # This event creates a complete set of four system models (births, deaths, ins, outs)
-  # based on user-provided CSV files and parameters.
-  shiny::observeEvent(input$create_system_models, {
-    file_error <- FALSE # Initialize a flag to track if any file-related errors occur.
-    req(global_config()$data_dir) # Ensure that the global data directory is set before proceeding.
-    models <- c("births", "deaths", "ins", "outs") # Define the four required system model components.
+  # ============================================================================
+  # === C. STEP 1: BAGE SERVER LOGIC
+  # ============================================================================
 
-    # Temporarily store the newly created system model components for this action.
-    # These will be used for immediate display and then added to the persistent `sysmod_list_list`.
-    new_sysmods_temp <- lapply(models, function(model) {
-      # Construct the full file path for the rates CSV file.
-      rates_file_path <- file.path(global_config()$data_dir, input[[paste0(model, "_rates_file")]])
-
-      # Check if the rates file exists. If not, set error flag and show an alert.
-      if (!file.exists(rates_file_path)) {
-        file_error <<- TRUE # Set the outer scope file_error flag.
-        shinyWidgets::sendSweetAlert(session = session, title = "File Error", text = paste("Rates file not found:", rates_file_path), type = "error")
-        return(NULL) # Return NULL for this model component if file is not found.
+  # --- C1. Data Upload ---
+  observe({
+    req(input$dataFile)
+    tryCatch(
+      {
+        df <- read.csv(input$dataFile$datapath, check.names = FALSE)
+        uploaded_data(df)
+      },
+      error = function(e) {
+        showNotification("Error reading CSV file.", type = "error")
+        NULL
       }
-      rates_df <- utils::read.csv(rates_file_path) # Read the rates data from the CSV file.
+    )
+  })
 
-      # Load or set the dispersion for the rates. This can be a single numeric value or a CSV file.
-      disp_val_or_df <- NULL
-      if (input[[paste0(model, "_disp_type")]] == "Single Value") {
-        disp_val_or_df <- input[[paste0(model, "_disp_value")]] # Use the single numeric dispersion value.
+  output$data_table <- DT::renderDataTable({
+    req(uploaded_data())
+    DT::datatable(uploaded_data(), options = list(scrollX = TRUE, pageLength = 10), rownames = FALSE)
+  })
+
+  # --- C2. Bage Formula Builder UI & Logic ---
+  output$formula_builder_ui_config <- shiny::renderUI({
+    df <- uploaded_data()
+    req(df)
+    if (is.null(df)) {
+      return(shiny::p("Please upload data to begin."))
+    }
+
+    col_names <- colnames(df)
+
+    shiny::tagList(
+      shiny::fluidRow(
+        shiny::column(6, shiny::selectInput("outcomeVar", "Outcome (Count)", choices = col_names, selected = head(col_names[grepl("count", col_names, ignore.case = TRUE)], 1))),
+        shiny::column(6, shiny::selectInput("exposureVar", "Exposure", choices = col_names, selected = head(col_names[grepl("popn|pop|exposure", col_names, ignore.case = TRUE)], 1)))
+      )
+    )
+  })
+
+  output$formula_builder_ui <- shiny::renderUI({
+    df <- uploaded_data()
+    req(df, input$outcomeVar, input$exposureVar)
+
+    col_names <- colnames(df)
+
+    pop_cols <- col_names[grepl("popn|pop|exposure", col_names, ignore.case = TRUE)]
+    available_predictors <- shiny::reactive({setdiff(col_names, c(input$outcomeVar, input$exposureVar, pop_cols))})
+
+    shiny::tagList(
+      shiny::fluidRow(
+        sortable::bucket_list(
+          header = "Drag predictors from the pool to build your formula.",
+          group_name = "formula_builder_group",
+          orientation = "horizontal",
+          sortable::add_rank_list(text = "Predictor Pool", labels = available_predictors(), input_id = "predictor_pool"),
+          sortable::add_rank_list(text = "Main Effects", labels = NULL, input_id = "main_effects"),
+          sortable::add_rank_list(text = "Build Interaction", labels = NULL, input_id = "interaction_builder")
+        )
+      ),
+      shiny::fluidRow(
+        shiny::column(6,
+          offset = 6,
+          shiny::actionButton("add_interaction_btn", "Add Interaction", icon = shiny::icon("plus"), class = "btn-primary"),
+          shiny::hr(),
+          shiny::h4("Added Interactions:"),
+          shiny::uiOutput("interactions_display_ui")
+        )
+      )
+    )
+  })
+
+  shiny::observeEvent(c(uploaded_data(), input$bage_component_selector), {
+    df <- uploaded_data()
+    req(df)
+
+    col_names <- colnames(df)
+    active_comp <- tolower(input$bage_component_selector) # e.g. "deaths"
+
+    # Guess outcome/exposure based on component
+    selected_outcome <- head(col_names[grepl(active_comp, col_names, ignore.case = TRUE)], 1)
+    if (length(selected_outcome) == 0) selected_outcome <- head(col_names[grepl("count", col_names, ignore.case = TRUE)], 1)
+
+    selected_exposure <- head(col_names[grepl("popn|pop|exposure", col_names, ignore.case = TRUE)], 1)
+
+    updateSelectInput(session, "outcomeVar", selected = selected_outcome)
+    updateSelectInput(session, "exposureVar", selected = selected_exposure)
+  }, ignoreNULL = TRUE, ignoreInit = TRUE)
+
+  shiny::observeEvent(input$add_interaction_btn, {
+    terms <- input$interaction_builder
+    if (length(terms) < 2) {
+      shiny::showNotification("Please drag at least two predictors to build an interaction.", type = "warning")
+      return()
+    }
+    interaction_term <- paste(sort(terms), collapse = ":")
+    if (!interaction_term %in% unlist(interactions_list())) {
+      interactions_list(append(interactions_list(), interaction_term))
+    }
+  })
+
+  output$interactions_display_ui <- shiny::renderUI({
+    shiny::req(length(interactions_list()) > 0)
+    lapply(seq_along(interactions_list()), function(i) {
+      shiny::fluidRow(
+        shiny::column(8, shiny::tags$b(interactions_list()[[i]])),
+        shiny::column(4, shiny::actionButton(paste0("remove_interaction_", i), "Remove", class = "btn-xs btn-danger"))
+      )
+    })
+  })
+
+  shiny::observe({
+    current_interactions <- interactions_list()
+    if (length(current_interactions) == 0) {
+      return()
+    }
+    lapply(seq_along(current_interactions), function(i) {
+      shiny::observeEvent(input[[paste0("remove_interaction_", i)]],
+        {
+          interactions_list(current_interactions[-i])
+        },
+        ignoreInit = TRUE,
+        once = TRUE
+      )
+    })
+  })
+
+  # --- C3. Bage Prior Controls & Formula Building ---
+  model_terms <- shiny::reactive({
+    c("(Intercept)", input$main_effects, unlist(interactions_list()))
+  })
+
+  output$priorControls <- shiny::renderUI({
+    terms <- model_terms()
+    shiny::req(length(terms) > 0)
+    prior_choices <- c("RW", "RW2", "N", "NFix", "Lin")
+    lapply(terms, function(term) {
+      sanitized_term <- gsub("[[:punct:]]", "_", term)
+      shiny::wellPanel(
+        shiny::h5(shiny::strong(paste("Prior for:", term))),
+        shiny::selectInput(inputId = paste0("prior_type_", sanitized_term), label = "Prior Type", choices = prior_choices),
+        shiny::conditionalPanel(condition = paste0("input.prior_type_", sanitized_term, " == 'RW'"), shiny::numericInput(inputId = paste0("param_s_rw_", sanitized_term), label = "Scale (s)", value = 1, min = 0), shiny::numericInput(inputId = paste0("param_sd_rw_", sanitized_term), label = "Standard Deviation (sd)", value = 1, min = 0), shiny::selectInput(inputId = paste0("param_con_rw_", sanitized_term), "Constraints (con)", choices = c("none", "by")), if (grepl(":", term)) {
+          shiny::selectInput(inputId = paste0("param_along_rw_", sanitized_term), "Along Variable", choices = c("NULL", unlist(strsplit(term, ":"))))
+        }),
+        shiny::conditionalPanel(condition = paste0("input.prior_type_", sanitized_term, " == 'RW2'"), shiny::numericInput(inputId = paste0("param_s_rw2_", sanitized_term), label = "Scale (s)", value = 1, min = 0), shiny::numericInput(inputId = paste0("param_sd_rw2_", sanitized_term), label = "Standard Deviation (sd)", value = 1, min = 0), shiny::numericInput(inputId = paste0("param_sd_slope_rw2_", sanitized_term), label = "Slope Standard Deviation (sd_slope)", value = 1, min = 0), shiny::selectInput(inputId = paste0("param_con_rw2_", sanitized_term), "Constraints (con)", choices = c("none", "by")), if (grepl(":", term)) {
+          shiny::selectInput(inputId = paste0("param_along_rw2_", sanitized_term), "Along Variable", choices = c("NULL", unlist(strsplit(term, ":"))))
+        }),
+        shiny::conditionalPanel(condition = paste0("input.prior_type_", sanitized_term, " == 'N'"), shiny::numericInput(inputId = paste0("param_s_n_", sanitized_term), label = "Scale (s)", value = 1, min = 0)),
+        shiny::conditionalPanel(condition = paste0("input.prior_type_", sanitized_term, " == 'NFix'"), shiny::numericInput(inputId = paste0("param_sd_nfix_", sanitized_term), label = "Standard Deviation (sd)", value = 1, min = 0)),
+        shiny::conditionalPanel(condition = paste0("input.prior_type_", sanitized_term, " == 'Lin'"), shiny::numericInput(inputId = paste0("param_s_lin_", sanitized_term), label = "Scale (s)", value = 0.1, min = 0))
+      )
+    })
+  })
+
+  build_formula_string <- shiny::reactive({
+    shiny::req(input$outcomeVar)
+    main_effects <- input$main_effects
+    interactions <- unlist(interactions_list())
+    all_terms <- c(main_effects, interactions)
+    rhs <- if (length(all_terms) > 0) paste(all_terms, collapse = " + ") else "1"
+    paste(input$outcomeVar, "~", rhs)
+  })
+
+  # --- C4. Bage Model Fitting ---
+  observeEvent(input$fit_bage_model_button, {
+    shiny::req(uploaded_data(), input$outcomeVar, input$exposureVar)
+    active_component <- input$bage_component_selector
+
+    id <- shiny::showNotification(paste("Fitting bage model for:", active_component), duration = NULL, closeButton = FALSE, type = "message")
+    on.exit(removeNotification(id), add = TRUE)
+
+    tryCatch(
+      {
+        formula_obj <- as.formula(build_formula_string())
+        current_call <- rlang::expr(bage::mod_pois(formula = !!formula_obj, data = your_data, exposure = !!rlang::sym(input$exposureVar)))
+        terms <- model_terms()
+        if (length(terms) > 0) {
+          for (term in terms) {
+            sanitized_term <- gsub("[[:punct:]]", "_", term)
+            prior_type <- input[[paste0("prior_type_", sanitized_term)]]
+            params_list <- switch(prior_type,
+              "RW" = {
+                params <- list(s = input[[paste0("param_s_rw_", sanitized_term)]], sd = input[[paste0("param_sd_rw_", sanitized_term)]], con = input[[paste0("param_con_rw_", sanitized_term)]])
+                if (grepl(":", term) && !is.null(input[[paste0("param_along_rw_", sanitized_term)]]) && input[[paste0("param_along_rw_", sanitized_term)]] != "NULL") {
+                  params$along <- input[[paste0("param_along_rw_", sanitized_term)]]
+                }
+                params
+              },
+              "RW2" = {
+                params <- list(s = input[[paste0("param_s_rw2_", sanitized_term)]], sd = input[[paste0("param_sd_rw2_", sanitized_term)]], sd_slope = input[[paste0("param_sd_slope_rw2_", sanitized_term)]], con = input[[paste0("param_con_rw2_", sanitized_term)]])
+                if (grepl(":", term) && !is.null(input[[paste0("param_along_rw2_", sanitized_term)]]) && input[[paste0("param_along_rw2_", sanitized_term)]] != "NULL") {
+                  params$along <- input[[paste0("param_along_rw2_", sanitized_term)]]
+                }
+                params
+              },
+              "N" = list(s = input[[paste0("param_s_n_", sanitized_term)]]),
+              "NFix" = list(sd = input[[paste0("param_sd_nfix_", sanitized_term)]]),
+              "Lin" = list(s = input[[paste0("param_s_lin_", sanitized_term)]])
+            )
+            prior_formula <- rlang::new_formula(lhs = rlang::parse_expr(term), rhs = rlang::call2(prior_type, !!!params_list))
+            current_call <- rlang::expr(bage::set_prior(!!current_call, !!prior_formula))
+          }
+        }
+        final_call <- rlang::expr(bage::fit(!!current_call))
+        env <- rlang::env(your_data = uploaded_data())
+        fitted_model <- eval(final_call, envir = env)
+
+        if (!is.null(fitted_model)) {
+          # MODIFIED: Store in the named list
+          current_models <- fitted_bage_models_list_rv()
+          current_models[[active_component]] <- fitted_model
+          fitted_bage_models_list_rv(current_models)
+
+          shinydashboard::updateTabItems(session, "tabs", selected = "bage_results_tab")
+          updateSelectInput(session, "bage_results_selector", selected = active_component)
+          shiny::showNotification(paste(active_component, "bage model fit successful!"), type = "message")
+        }
+      },
+      error = function(e) {
+        shiny::showNotification(paste("Bage Model Error:", e$message), type = "error", duration = 10)
+        NULL
+      }
+    )
+  })
+
+  # --- C5. Bage Results and Plots (Context-Aware) ---
+
+  # Reactive to get the model and results for the currently selected component
+  selected_bage_model_and_results <- reactive({
+    req(input$bage_results_selector)
+    model_name <- input$bage_results_selector
+
+    model_list <- fitted_bage_models_list_rv()
+    if (is.null(model_list[[model_name]])) {
+      return(NULL)
+    }
+
+    fitted_model <- model_list[[model_name]]
+    results_df <- fitted_model %>%
+      bage::augment() %>%
+      dplyr::mutate(.fitted_mean = rowMeans(as.matrix(.fitted)), .expected_mean = rowMeans(as.matrix(.expected))) %>%
+      dplyr::mutate(rvec::draws_ci(.fitted))
+
+    return(list(model = fitted_model, results = results_df))
+  })
+
+  output$fitted_bage_models_status <- renderUI({
+    fitted_models <- names(fitted_bage_models_list_rv())
+    if (length(fitted_models) == 0) {
+      return(p("No components fitted yet."))
+    }
+
+    status_tags <- lapply(c("Births", "Deaths", "Ins", "Outs"), function(comp) {
+      if (comp %in% fitted_models) {
+        tags$span(class = "label label-success", style = "margin-right: 5px;", comp)
       } else {
-        # Construct the full file path for the dispersion CSV file.
-        disp_file_path <- file.path(global_config()$data_dir, input[[paste0(model, "_disp_file")]])
-        # Check if the dispersion file exists.
-        if (!file.exists(disp_file_path)) {
+        tags$span(class = "label label-danger", style = "margin-right: 5px;", comp)
+      }
+    })
+    tagList(status_tags)
+  })
+
+  # --- Dynamic Filters for Results Plot ---
+  output$results_plot_filters_ui <- renderUI({
+    res <- selected_bage_model_and_results()
+    req(res)
+    data <- res$results
+
+    is_numeric <- sapply(data, is.numeric)
+    is_rvec <- sapply(data, rvec::is_rvec)
+    age_var <- intersect(c("age", "age_group"), colnames(data))
+
+    filter_vars <- setdiff(colnames(data), c(names(which(is_numeric | is_rvec)), age_var))
+
+    if ("time" %in% colnames(data)) {
+      filter_vars <- c(filter_vars, "time")
+    } else if ("year" %in% colnames(data)) {
+      filter_vars <- c(filter_vars, "year")
+    }
+
+    if (length(filter_vars) == 0) {
+      return(p("No additional variables to filter by."))
+    }
+
+    # Create a selectInput for each filtering variable
+    lapply(filter_vars, function(var) {
+      column(
+        width = 3,
+        selectInput(
+          inputId = paste0("filter_", var),
+          label = paste("Select", var),
+          choices = unique(data[[var]]),
+          selected = unique(data[[var]])[1]
+        )
+      )
+    })
+  })
+
+
+  # --- Reactive data frame filtered for the results plot ---
+  filtered_plot_data <- reactive({
+    res <- selected_bage_model_and_results()
+    req(res)
+    data_to_filter <- res$results
+
+    # Identify the same filter variables as in the UI
+    is_numeric <- sapply(data_to_filter, is.numeric)
+    is_rvec <- sapply(data_to_filter, rvec::is_rvec)
+    age_var <- intersect(c("age", "age_group"), colnames(data_to_filter))
+    filter_vars <- setdiff(colnames(data_to_filter), c(names(which(is_numeric | is_rvec)), age_var))
+
+    if ("time" %in% colnames(data_to_filter)) {
+      filter_vars <- c(filter_vars, "time")
+    } else if ("year" %in% colnames(data_to_filter)) {
+      filter_vars <- c(filter_vars, "year")
+    }
+
+    # Sequentially filter the data based on the dynamic inputs
+    for (var in filter_vars) {
+      input_id <- paste0("filter_", var)
+      req(input[[input_id]]) # Ensure the input exists
+      data_to_filter <- data_to_filter %>%
+        dplyr::filter(!!sym(var) == input[[input_id]])
+    }
+
+    data_to_filter
+  })
+
+  # --- Render Outputs for Model Results Tab ---
+  output$results_plot <- plotly::renderPlotly({
+    # Use the new filtered data reactive
+    plot_data <- filtered_plot_data()
+    req(plot_data)
+
+    p <- ggplot2::ggplot(plot_data, ggplot2::aes(x = age)) +
+      ggplot2::geom_ribbon(ggplot2::aes(ymin = .fitted.lower, ymax = .fitted.upper, fill = "Fitted (95% CI)"), alpha = 0.3) +
+      ggplot2::geom_line(ggplot2::aes(y = .fitted_mean, color = "Fitted"), linewidth = 0.8) +
+      ggplot2::geom_point(ggplot2::aes(y = .fitted_mean, color = "Fitted"), alpha = 0.7, size = 1.5) +
+      ggplot2::geom_line(ggplot2::aes(y = .expected_mean, color = "Expected"), linetype = "dashed") +
+      ggplot2::geom_point(ggplot2::aes(y = .expected_mean, color = "Expected"), alpha = 0.7, size = 1.5) +
+      ggplot2::geom_point(ggplot2::aes(y = .observed, color = "Observed"), alpha = 0.7, size = 1.5, shape = 15) +
+      ggplot2::scale_color_manual(name = "Rate Type", values = c("Fitted" = "#206095", "Expected" = "#d0021b", "Observed" = "#003c57"), breaks = c("Fitted", "Expected", "Observed")) +
+      ggplot2::scale_fill_manual(name = NULL, values = c("Fitted (95% CI)" = "#27a0cc")) +
+      ggplot2::labs(title = paste0("Comparison of Model Rates: ", plot_data$time[1]), x = "Age", y = "Rate") +
+      ggplot2::theme_minimal(base_size = 15)
+
+    # Faceting is no longer needed as the data is pre-filtered
+
+    plotly::ggplotly(p)
+  })
+
+  output$results_table <- DT::renderDataTable({
+    results_for_table <- filtered_plot_data()
+    req(results_for_table)
+    results_for_table <- results_for_table %>%
+      dplyr::select(any_of(c("age", "sex", "time", "region")), .fitted_mean, .fitted.lower, .fitted.upper) %>%
+      dplyr::mutate(dplyr::across(dplyr::where(is.numeric), ~ round(., 4)))
+    DT::datatable(results_for_table, options = list(scrollX = TRUE, pageLength = 5), rownames = FALSE)
+  })
+
+  output$model_summary_print <- shiny::renderPrint({
+    res <- selected_bage_model_and_results()
+    req(res)
+    print(res$model)
+  })
+  output$download_model_rds <- shiny::downloadHandler(filename = function() paste0("bage_model_", input$bage_results_selector, ".rds"), content = function(file) saveRDS(selected_bage_model_and_results()$model, file))
+  output$download_results_csv <- shiny::downloadHandler(filename = function() paste0("bage_results_", input$bage_results_selector, ".csv"), content = function(file) write.csv(selected_bage_model_and_results()$results, file, row.names = FALSE))
+
+  # --- C6. Bage Advanced Tools (Diagnostics & Forecast) ---
+  observeEvent(input$run_ppc_btn, {
+    res <- selected_bage_model_and_results()
+    req(res)
+    id <- showNotification("Generating replicate data...", duration = NULL, closeButton = FALSE)
+    on.exit(removeNotification(id))
+    rep_data <- bage::replicate_data(res$model, n = input$n_replicates)
+    replicate_data_rv(rep_data)
+  })
+  observeEvent(input$run_forecast_btn, {
+    res <- selected_bage_model_and_results()
+    req(res, input$forecast_labels != "")
+    id <- showNotification("Running forecast...", duration = NULL, closeButton = FALSE)
+    on.exit(removeNotification(id))
+    tryCatch(
+      {
+        labels_to_forecast <- eval(parse(text = input$forecast_labels))
+        fc <- bage::forecast(res$model, labels = labels_to_forecast, include_estimates = input$include_estimates)
+        forecast_results(fc)
+      },
+      error = function(e) {
+        shinyNotification(paste("Forecast Error:", e$message), type = "error")
+      }
+    )
+  })
+  # --- Dynamic Filters for Results Plot ---
+  output$forecast_plot_filters_ui <- renderUI({
+    req(forecast_results())
+
+    # Identify potential filtering variables (non-numeric, non-age, non-rvec columns)
+    data <- forecast_results()
+    is_numeric <- sapply(data, is.numeric)
+    is_rvec <- sapply(data, rvec::is_rvec)
+
+    filter_vars <- setdiff(colnames(data), c(names(which(is_numeric | is_rvec))))
+
+    filter_vars <- c(filter_vars, "age")
+
+    if (length(filter_vars) == 0) {
+      return(p("No additional variables to filter by."))
+    }
+
+    # Create a selectInput for each filtering variable
+    lapply(filter_vars, function(var) {
+      column(
+        width = 3,
+        selectInput(
+          inputId = paste0("filter_", var),
+          label = paste("Select", var),
+          choices = unique(data[[var]]),
+          selected = unique(data[[var]])[1]
+        )
+      )
+    })
+  })
+
+  # --- Reactive data frame filtered for the results plot ---
+  filtered_forecast_data <- reactive({
+    req(forecast_results())
+    data_to_filter <- forecast_results()
+
+    # Identify the same filter variables as in the UI
+    is_numeric <- sapply(data_to_filter, is.numeric)
+    is_rvec <- sapply(data_to_filter, rvec::is_rvec)
+    filter_vars <- setdiff(colnames(data_to_filter), c(names(which(is_numeric | is_rvec))))
+
+    filter_vars <- c(filter_vars, "age")
+
+    # Sequentially filter the data based on the dynamic inputs
+    for (var in filter_vars) {
+      input_id <- paste0("filter_", var)
+      req(input[[input_id]]) # Ensure the input exists
+      data_to_filter <- data_to_filter %>%
+        dplyr::filter(!!sym(var) == input[[input_id]])
+    }
+
+    data_to_filter
+  })
+
+  output$forecast_plot <- plotly::renderPlotly({
+    shiny::req(filtered_forecast_data(), input$forecast_x_var)
+    forecast_data <- filtered_forecast_data()
+    draws_matrix <- as.matrix(forecast_data$.fitted)
+    mean_vals <- rowMeans(draws_matrix)
+    ci_vals <- t(apply(draws_matrix, 1, quantile, probs = c(0.025, 0.975), na.rm = TRUE))
+    plot_data <- forecast_data %>%
+      dplyr::select(-.fitted, -.expected) %>%
+      dplyr::mutate(.fitted_mean = mean_vals, .fitted.lower = ci_vals[, 1], .fitted.upper = ci_vals[, 2])
+    age_var <- intersect(c("age", "age_group"), colnames(plot_data))
+    p <- ggplot2::ggplot(plot_data, ggplot2::aes(x = !!rlang::sym(input$forecast_x_var)))
+    if (length(age_var) > 0) {
+      facets <- c(input$forecast_facet_row, input$forecast_facet_col)
+      facets_in_use <- facets[facets != "None"]
+      grouping_vars <- plot_data %>%
+        dplyr::select(dplyr::where(is.character), dplyr::where(is.factor), -dplyr::all_of(facets_in_use)) %>%
+        colnames()
+      p <- p + ggplot2::geom_line(ggplot2::aes(y = .fitted_mean, color = !!rlang::sym(age_var), group = interaction(!!!rlang::syms(grouping_vars)))) + ggplot2::geom_ribbon(ggplot2::aes(ymin = .fitted.lower, ymax = .fitted.upper, fill = !!rlang::sym(age_var), group = interaction(!!!rlang::syms(grouping_vars))), alpha = 0.2) + ggplot2::geom_point(ggplot2::aes(y = .observed, color = !!rlang::sym(age_var), group = interaction(!!!rlang::syms(grouping_vars))))
+    } else {
+      p <- p + ggplot2::geom_ribbon(ggplot2::aes(ymin = .fitted.lower, ymax = .fitted.upper), fill = "lightblue") + ggplot2::geom_line(ggplot2::aes(y = .fitted_mean), color = "darkblue") + ggplot2::geom_point(ggplot2::aes(y = .observed), color = "red")
+    }
+    p <- p + ggplot2::labs(title = "Forecasted Rates", x = input$forecast_x_var, y = "Rate") + ggplot2::theme_minimal(base_size = 14)
+    facet_row <- if (is.null(input$forecast_facet_row) || input$forecast_facet_row == "None") NULL else rlang::sym(input$forecast_facet_row)
+    facet_col <- if (is.null(input$forecast_facet_col) || input$forecast_facet_col == "None") NULL else rlang::sym(input$forecast_facet_col)
+    if (!is.null(facet_row) || !is.null(facet_col)) {
+      p <- p + ggplot2::facet_grid(rows = ggplot2::vars(!!facet_row), cols = ggplot2::vars(!!facet_col))
+    }
+    suppressWarnings(plotly::ggplotly(p))
+  })
+
+  # --- Final Render Outputs ---
+  output$data_table <- DT::renderDataTable({
+    shiny::req(uploaded_data())
+    DT::datatable(uploaded_data(), options = list(scrollX = TRUE, pageLength = 10), rownames = FALSE)
+  })
+  output$generated_code <- shiny::renderPrint({
+    shiny::req(generated_code_string())
+    cat(generated_code_string())
+  })
+
+  # ============================================================================
+  # === D. STEP 2: DPM SERVER LOGIC
+  # ============================================================================
+
+  # --- D1. DPM System Model Setup (THE BRIDGE) ---
+  observeEvent(input$create_system_models, {
+    file_error <- FALSE
+    req(global_config()$data_dir, sysmod_list_list)
+    models <- c("births", "deaths", "ins", "outs")
+    id <- showNotification("Creating DPM system models...", duration = NULL, closeButton = FALSE)
+    on.exit(removeNotification(id), add = TRUE)
+
+    new_sysmods_temp <- lapply(models, function(model) {
+      rate_source_choice <- input[[paste0("rate_source_", model)]]
+      rates_df <- NULL
+
+      if (rate_source_choice == "bage") {
+        model_key <- stringr::str_to_title(model)
+        bage_model_to_use <- fitted_bage_models_list_rv()[[model_key]]
+        if (is.null(bage_model_to_use)) {
+          shinyWidgets::sendSweetAlert(session, title = "Model Missing", text = paste("The bage model for '", model_key, "' has not been fitted yet."), type = "error")
           file_error <<- TRUE
-          shinyWidgets::sendSweetAlert(session = session, title = "File Error", text = paste("Dispersion file not found:", disp_file_path), type = "error")
           return(NULL)
         }
-        disp_val_or_df <- utils::read.csv(disp_file_path) # Read the dispersion data from the CSV file.
-      }
+        rates_df <- bage_model_to_use %>%
+          bage::augment() %>%
+          dplyr::mutate(rate = rowMeans(as.matrix(.fitted)))
 
-      # Retrieve optional system model parameters from UI inputs.
+        if ("sex" %in% colnames(rates_df)) {
+          rates_df <- rates_df %>%
+            dplyr::select(all_of(c("age", "sex", "time", "rate")))
+        } else {
+          rates_df <- rates_df %>%
+            dplyr::select(all_of(c("age", "time", "rate")))
+        }
+      } else { # "csv"
+        rates_file_path <- file.path(global_config()$data_dir, input[[paste0(model, "_rates_file")]])
+        if (!file.exists(rates_file_path)) {
+          file_error <<- TRUE
+          shinyWidgets::sendSweetAlert(session, title = "File Error", text = paste("Rates file not found:", rates_file_path), type = "error")
+          return(NULL)
+        }
+        rates_df <- utils::read.csv(rates_file_path, check.names = FALSE)
+      }
+      req(rates_df)
+
+      disp_val_or_df <- NULL
+      if (input[[paste0(model, "_disp_type")]] == "Single Value") {
+        disp_val_or_df <- input[[paste0(model, "_disp_value")]]
+      } else {
+        disp_file_path <- file.path(global_config()$data_dir, input[[paste0(model, "_disp_file")]])
+        if (!file.exists(disp_file_path)) {
+          file_error <<- TRUE
+          shinyWidgets::sendSweetAlert(session, title = "File Error", text = paste("Dispersion file not found:", disp_file_path), type = "error")
+          return(NULL)
+        }
+        disp_val_or_df <- utils::read.csv(disp_file_path, check.names = FALSE)
+      }
       lower_rates_limit_val <- input[[paste0(model, "_lower_rate_limit")]]
       rate_scaler_val <- input[[paste0(model, "_rate_scale")]]
       rate_overide_val <- input[[paste0(model, "_rate_overide")]]
@@ -129,42 +646,26 @@ server_sens <- function(input, output, session) {
       sex_target <- input[[paste0(model, "_sex_target")]]
       time_target <- input[[paste0(model, "_time_target")]]
 
-      # Check if the 'create_system_model' function (assumed to be from the 'accountTMB' package or defined elsewhere) exists.
-      if (!exists("create_system_model") || !is.function(create_system_model)) {
-        shinyWidgets::sendSweetAlert(session = session, title = "Configuration Error", text = "Function 'create_system_model' is not defined. This function is required to create system models.", type = "error")
-        return(NULL)
-      }
-      # Call the function to create the individual system model component.
-      # This function is expected to handle the provided rates, dispersion, and optional parameters.
       create_system_model(
-        model, rates_df, disp_val_or_df, time_selection_val,
-        lower_rates_limit_val, rate_scaler_val, rate_overide_val, rate_noise_val,
-        age_target, sex_target, time_target
+        model_name = model, rates_df = rates_df, disp = disp_val_or_df,
+        time_selection = global_config()$time_selection,
+        lower_rates_limit = lower_rates_limit_val,
+        rate_scaler = rate_scaler_val,
+        rate_overide = rate_overide_val, rate_noise = rate_noise_val,
+        age_target = age_target, sex_target = sex_target, time_target = time_target
       )
     })
 
-    # If a file error occurred or any model component failed to create, show an alert and stop.
     if (file_error || any(sapply(new_sysmods_temp, is.null))) {
-      if (!file_error) { # If not a file error, implies a null return from create_system_model.
-        shinyWidgets::sendSweetAlert(
-          session = session,
-          title = "System Model Creation Error",
-          text = "One or more system model components could not be created. Please check inputs and console for details from 'create_system_model'.",
-          type = "error"
-        )
-      }
-      return() # Stop further processing for this event.
+      if (!file_error) shinyWidgets::sendSweetAlert(session, title = "System Model Creation Error", text = "One or more components failed. Check inputs.", type = "error")
+      return()
     }
-
-    names(new_sysmods_temp) <- models # Assign names (births, deaths, ins, outs) to the created model components.
-    sysmod_list(new_sysmods_temp) # Update 'sysmod_list' to hold this newly created set, making it the "current" one.
-
-    # Add this new system model setup to the list of all setups ('sysmod_list_list').
+    names(new_sysmods_temp) <- models
+    sysmod_list(new_sysmods_temp)
     current_list_of_setups <- sysmod_list_list()
     new_setup_entry <- list()
-    new_setup_entry[[input$sysmods_name]] <- new_sysmods_temp # Store the named list of 4 models as one setup, using the user-provided setup name.
-    sysmod_list_list(c(current_list_of_setups, new_setup_entry)) # Append the new setup to the existing list.
-
+    new_setup_entry[[input$sysmods_name]] <- new_sysmods_temp
+    sysmod_list_list(c(current_list_of_setups, new_setup_entry))
     # Dynamically render UI to display the names of all loaded system model setups.
     output$loadedSystemModels <- renderUI({
       sys_setups <- sysmod_list_list()
@@ -240,8 +741,9 @@ server_sens <- function(input, output, session) {
         }
       })
     })
-  }) # End observeEvent input$create_system_models
+  })
 
+  # --- D2. DPM System Model Management ---
   # Observer for the 'Delete Selected System Models' button.
   shiny::observeEvent(input$delete_button_sysmod, {
     req(input$delete_sysmod_list) # Requires a system model setup name to be selected from the dropdown.
@@ -330,15 +832,8 @@ server_sens <- function(input, output, session) {
   shiny::observeEvent(input$goSM, { # "Continue" to System Models or "Back" to System Models
     shiny::updateTabsetPanel(session, "tabs", selected = "systemModels")
   })
-  ##############################################################################
 
-
-  ##############################################################################
-  ############################### dataModels Tab ###############################
-  ##############################################################################
-  # This section handles logic related to the 'Data Models' tab, including creation,
-  # display, plotting, inspection, import, and export of data models.
-
+  # --- D3. DPM Data Model Logic ---
   # Reactive expression to read the main counts data for a new data model.
   mainData <- shiny::reactive({
     req(global_config()$data_dir, input$counts_file) # Require data directory and counts filename.
@@ -585,7 +1080,7 @@ server_sens <- function(input, output, session) {
       return()
     } # Stop if reading failed.
 
-    # 'create_data_model' is assumed to be an external function (e.g., from accountTMB).
+    # 'create_data_model' is assumed to be an external function (e.g., from dpmaccount).
     if (!exists("create_data_model") || !is.function(create_data_model)) {
       shinyWidgets::sendSweetAlert(session = session, title = "Configuration Error", text = "Function 'create_data_model' is not defined.", type = "error")
       return()
@@ -839,8 +1334,6 @@ server_sens <- function(input, output, session) {
   shiny::observeEvent(input$goDM, {
     shiny::updateTabsetPanel(session, "tabs", selected = "dataModels")
   })
-  ##############################################################################
-
 
   ##############################################################################
   ################################ fitModel Tab ################################
@@ -884,7 +1377,7 @@ server_sens <- function(input, output, session) {
 
 
   # Observer for the 'Fit Model' button.
-  shiny::observeEvent(input$fit_account_model, {
+  shiny::observeEvent(input$fit_dpm_model_button, {
     # Ensure selected data models, system models, output directory, and seed value are available.
     req(
       filtered_data_models_fit(), filtered_system_models_fit(),
@@ -901,17 +1394,17 @@ server_sens <- function(input, output, session) {
 
     # Use withProgress to show a progress bar during model fitting.
     shiny::withProgress(message = "Fitting Account Model...", value = 0, {
-      shiny::incProgress(0.1, detail = "Estimating account using accountTMB...")
-      # Call the 'estimate_account' function from the 'accountTMB' package.
+      shiny::incProgress(0.1, detail = "Estimating account using dpmaccount...")
+      # Call the 'estimate_account' function from the 'dpmaccount' package.
       # This is the core model fitting step.
       result <- tryCatch(
-        accountTMB::estimate_account(
+        dpmaccount::estimate_account(
           datamods = filtered_data_models_fit(), # Pass selected data models.
           sysmods = filtered_system_models_fit(), # Pass selected system models.
           seed_in = global_config()$seed_value # Pass the seed for reproducibility.
         ),
         error = function(e) { # Handle errors during estimation.
-          shinyWidgets::sendSweetAlert(session, title = "Estimation Error", text = paste("Failed to estimate account with 'accountTMB::estimate_account':", e$message), type = "error")
+          shinyWidgets::sendSweetAlert(session, title = "Estimation Error", text = paste("Failed to estimate account with 'dpmaccount::estimate_account':", e$message), type = "error")
           return(NULL)
         }
       )
@@ -925,8 +1418,8 @@ server_sens <- function(input, output, session) {
 
       shiny::incProgress(0.2, detail = "Generating diagnostics...")
       # Generate diagnostics from the model result (e.g., cohort success/failure).
-      # Assumes 'accountTMB::diagnostics' function exists.
-      diag <- result %>% accountTMB::diagnostics()
+      # Assumes 'dpmaccount::diagnostics' function exists.
+      diag <- result %>% dpmaccount::diagnostics()
       cohort_passes <- nrow(diag %>% dplyr::filter(.data$success == TRUE)) # Count successful cohorts.
       cohort_total <- nrow(diag) # Total cohorts.
       output$cohortResults <- renderText({ # Display success rate.
@@ -938,16 +1431,16 @@ server_sens <- function(input, output, session) {
 
       shiny::incProgress(0.2, detail = "Augmenting population estimates...")
       # Augment population estimates from the model result.
-      # Assumes 'accountTMB::augment_population' function exists.
-      pop_res_full <- result %>% accountTMB::augment_population(collapse = "cohort")
+      # Assumes 'dpmaccount::augment_population' function exists.
+      pop_res_full <- result %>% dpmaccount::augment_population(collapse = "cohort")
       # Store augmented population data, excluding list columns for simpler display in DT.
       population_estimates_single_fit(pop_res_full %>% dplyr::select(-any_of(c("population"))))
 
       shiny::incProgress(0.1, detail = "Augmenting migration estimates...")
       # Augment migration (events) estimates.
-      # Assumes 'accountTMB::augment_events' function exists.
+      # Assumes 'dpmaccount::augment_events' function exists.
       mig_res_full <- result %>%
-        accountTMB::augment_events(collapse = "age") %>% # Collapse by age for migration.
+        dpmaccount::augment_events(collapse = "age") %>% # Collapse by age for migration.
         dplyr::mutate(age = .data$time - .data$cohort) %>% # Calculate age if not directly present.
         dplyr::select(-any_of(c("cohort", "age_calc"))) # Clean up temporary columns.
       # Store augmented migration data, excluding list columns for DT.
@@ -1153,7 +1646,7 @@ server_sens <- function(input, output, session) {
     shiny::withProgress(message = "Comparing Account Models...", value = 0, {
       shiny::incProgress(0.1, detail = "Estimating Model for Setup 1...")
       # Estimate account for Setup 1.
-      result_1 <- tryCatch(accountTMB::estimate_account(datamods = filtered_data_models_1_comp(), sysmods = filtered_sys_models_1_comp(), seed_in = global_config()$seed_value),
+      result_1 <- tryCatch(dpmaccount::estimate_account(datamods = filtered_data_models_1_comp(), sysmods = filtered_sys_models_1_comp(), seed_in = global_config()$seed_value),
         error = function(e) {
           shinyWidgets::sendSweetAlert(session, title = "Error Estimating Model 1", text = e$message, type = "error")
           NULL
@@ -1165,7 +1658,7 @@ server_sens <- function(input, output, session) {
 
       shiny::incProgress(0.4, detail = "Estimating Model for Setup 2...")
       # Estimate account for Setup 2.
-      result_2 <- tryCatch(accountTMB::estimate_account(datamods = filtered_data_models_2_comp(), sysmods = filtered_sys_models_2_comp(), seed_in = global_config()$seed_value),
+      result_2 <- tryCatch(dpmaccount::estimate_account(datamods = filtered_data_models_2_comp(), sysmods = filtered_sys_models_2_comp(), seed_in = global_config()$seed_value),
         error = function(e) {
           shinyWidgets::sendSweetAlert(session, title = "Error Estimating Model 2", text = e$message, type = "error")
           NULL
@@ -1177,13 +1670,13 @@ server_sens <- function(input, output, session) {
 
       shiny::incProgress(0.2, detail = "Augmenting results for Model 1...")
       # Augment population and migration for Setup 1.
-      pop_1 <- tryCatch(result_1 %>% accountTMB::augment_population(collapse = "cohort"), error = function(e) NULL)
-      mig_1 <- tryCatch(result_1 %>% accountTMB::augment_events(collapse = "age") %>% dplyr::mutate(age = .data$time - .data$cohort) %>% dplyr::select(-any_of("cohort")), error = function(e) NULL)
+      pop_1 <- tryCatch(result_1 %>% dpmaccount::augment_population(collapse = "cohort"), error = function(e) NULL)
+      mig_1 <- tryCatch(result_1 %>% dpmaccount::augment_events(collapse = "age") %>% dplyr::mutate(age = .data$time - .data$cohort) %>% dplyr::select(-any_of("cohort")), error = function(e) NULL)
 
       shiny::incProgress(0.2, detail = "Augmenting results for Model 2...")
       # Augment population and migration for Setup 2.
-      pop_2 <- tryCatch(result_2 %>% accountTMB::augment_population(collapse = "cohort"), error = function(e) NULL)
-      mig_2 <- tryCatch(result_2 %>% accountTMB::augment_events(collapse = "age") %>% dplyr::mutate(age = .data$time - .data$cohort) %>% dplyr::select(-any_of("cohort")), error = function(e) NULL)
+      pop_2 <- tryCatch(result_2 %>% dpmaccount::augment_population(collapse = "cohort"), error = function(e) NULL)
+      mig_2 <- tryCatch(result_2 %>% dpmaccount::augment_events(collapse = "age") %>% dplyr::mutate(age = .data$time - .data$cohort) %>% dplyr::select(-any_of("cohort")), error = function(e) NULL)
 
       if (is.null(pop_1) || is.null(mig_1) || is.null(pop_2) || is.null(mig_2)) {
         shinyWidgets::sendSweetAlert(session, title = "Augmentation Error", text = "Could not augment results for one or both models after estimation.", type = "error")
@@ -1707,33 +2200,45 @@ server_sens <- function(input, output, session) {
     updateSelectInput(session, "sa_datamod_param_select", choices = param_choices, selected = "None")
   })
 
+  sa_sysmod_param_select <- reactive({
+    req(input$sa_rate_select != "None", input$sa_modification_select != "None")
+    rate <- input$sa_rate_select
+    modification <- input$sa_modification_select
+
+    if (rate == "None" || modification == "None") {
+      return("None")
+    } else {
+      return(paste0(rate, "_", modification))
+    }
+  })
+
   # UI for specifying the range (min, max, steps) for the selected system model parameter.
   output$sa_sysmod_param_range_ui <- renderUI({
-    req(input$sa_sysmod_param_select, input$sa_sysmod_param_select != "None") # Requires a sysmod parameter to be selected.
+    req(sa_sysmod_param_select(), sa_sysmod_param_select() != "None") # Requires a sysmod parameter to be selected.
 
     # Set default range values based on the type of parameter.
     default_min <- 0
     default_max <- 1
     default_steps <- 3
     step_val <- 0.1
-    param_label_prefix <- tools::toTitleCase(gsub("_", " ", input$sa_sysmod_param_select)) # Human-readable label.
+    param_label_prefix <- tools::toTitleCase(gsub("_", " ", sa_sysmod_param_select())) # Human-readable label.
 
-    if (grepl("lower_rate_limit", input$sa_sysmod_param_select)) {
+    if (grepl("lower_rate_limit", sa_sysmod_param_select())) {
       default_min <- 1e-7
       default_max <- 1e-4
       default_steps <- 4
       step_val <- 1e-7
-    } else if (grepl("rate_scale", input$sa_sysmod_param_select)) {
+    } else if (grepl("rate_scale", sa_sysmod_param_select())) {
       default_min <- 0.5
       default_max <- 1.5
       default_steps <- 3
       step_val <- 0.1
-    } else if (grepl("rate_noise", input$sa_sysmod_param_select)) {
+    } else if (grepl("rate_noise", sa_sysmod_param_select())) {
       default_min <- 0
       default_max <- 0.1
       default_steps <- 3
       step_val <- 0.01
-    } else if (grepl("dispersion", input$sa_sysmod_param_select)) {
+    } else if (grepl("dispersion", sa_sysmod_param_select())) {
       default_min <- 0.01
       default_max <- 0.15
       default_steps <- 4
@@ -1809,7 +2314,7 @@ server_sens <- function(input, output, session) {
     )
 
     # Validate that at least one parameter (either system or data model) is selected for variation.
-    if (input$sa_sysmod_param_select == "None" && input$sa_datamod_param_select == "None") {
+    if (sa_sysmod_param_select() == "None" && input$sa_datamod_param_select == "None") {
       shinyWidgets::sendSweetAlert(session, title = "No Parameter Selected", text = "Please select a system or data model parameter to vary for the sensitivity analysis.", type = "warning")
       return()
     }
@@ -1833,7 +2338,7 @@ server_sens <- function(input, output, session) {
     varied_param_name_short_id <- NULL # e.g., "dispersion", "sd_scaler"
 
     # Determine which parameter is being varied and get its range of values.
-    if (input$sa_sysmod_param_select != "None") { # A system model parameter is selected.
+    if (sa_sysmod_param_select() != "None") { # A system model parameter is selected.
       req(input$sa_sys_param_min, input$sa_sys_param_max, input$sa_sys_param_steps)
       if (input$sa_sys_param_min >= input$sa_sys_param_max || input$sa_sys_param_steps < 2) {
         shinyWidgets::sendSweetAlert(session, title = "Invalid Range", text = "System model parameter range (min >= max) or number of steps (< 2) is invalid.", type = "error")
@@ -1842,10 +2347,10 @@ server_sens <- function(input, output, session) {
       param_values_to_test <- seq(from = input$sa_sys_param_min, to = input$sa_sys_param_max, length.out = as.integer(input$sa_sys_param_steps))
       varied_param_type <- "sys"
       # Parse the system model parameter string (e.g., "births_dispersion")
-      split_param <- unlist(strsplit(input$sa_sysmod_param_select, "_", fixed = TRUE))
+      split_param <- unlist(strsplit(sa_sysmod_param_select(), "_", fixed = TRUE))
       sys_model_component_to_vary <- split_param[1] # e.g., "births"
       varied_param_name_short_id <- paste(split_param[-1], collapse = "_") # e.g., "dispersion" or "lower_rate_limit"
-      varied_param_name_full_id <- input$sa_sysmod_param_select
+      varied_param_name_full_id <- sa_sysmod_param_select()
       # Store info about the varied parameter for use in plotting.
       sensitivity_varied_param_info(list(name = varied_param_name_full_id, type = "System Model", component = sys_model_component_to_vary, short_name = varied_param_name_short_id))
     } else if (input$sa_datamod_param_select != "None") { # A data model parameter is selected.
@@ -1976,7 +2481,7 @@ server_sens <- function(input, output, session) {
         run_result_object <- NULL # Initialize.
         tryCatch(
           { # Estimate account with the modified models.
-            run_result_object <- accountTMB::estimate_account(
+            run_result_object <- dpmaccount::estimate_account(
               datamods = current_iter_data_models,
               sysmods = current_iter_sys_models,
               seed_in = global_config()$seed_value
@@ -1991,8 +2496,8 @@ server_sens <- function(input, output, session) {
         # --- Process and store results if estimation was successful ---
         if (!is.null(run_result_object)) {
           # Augment population and migration results.
-          pop_res_df_iter <- tryCatch(accountTMB::augment_population(run_result_object, collapse = "cohort"), error = function(e) NULL)
-          mig_res_df_iter <- tryCatch(accountTMB::augment_events(run_result_object, collapse = "age") %>% dplyr::mutate(age = .data$time - .data$cohort) %>% dplyr::select(-any_of("cohort")), error = function(e) NULL)
+          pop_res_df_iter <- tryCatch(dpmaccount::augment_population(run_result_object, collapse = "cohort"), error = function(e) NULL)
+          mig_res_df_iter <- tryCatch(dpmaccount::augment_events(run_result_object, collapse = "age") %>% dplyr::mutate(age = .data$time - .data$cohort) %>% dplyr::select(-any_of("cohort")), error = function(e) NULL)
 
           param_info_current_iter <- sensitivity_varied_param_info() # Get the name of the varied parameter.
           # Add the current parameter value and run ID to the results dataframes.
@@ -2143,7 +2648,7 @@ server_sens <- function(input, output, session) {
       ggplot2::geom_line() +
       ggplot2::geom_point(size = 2) +
       ggplot2::facet_grid(cols = ggplot2::vars(.data$sex)) +
-      ggplot2::labs(title = "Aggregate Emigration Comparison Over Time", y = "Total Immigration", x = "Time") +
+      ggplot2::labs(title = "Aggregate Emigration Comparison Over Time", y = "Total Emigration", x = "Time") +
       ggplot2::theme_minimal()
     plotly::ggplotly(p)
   })
@@ -2255,4 +2760,11 @@ server_sens <- function(input, output, session) {
       ggplot2::guides(fill = "none") # Hide fill legend if ribbons are used and it's redundant.
     plotly::ggplotly(p_sa_outs)
   })
-} # End of server function
+
+  # ============================================================================
+  # === E. REPRODUCIBLE CODE GENERATION
+  # ============================================================================
+  output$generated_code <- shiny::renderPrint({
+    cat("### Full reproducible code generation coming soon. ###\n")
+  })
+}

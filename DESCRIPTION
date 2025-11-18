@@ -4,8 +4,8 @@ Version: 0.1.0
 Authors@R: 
     person("Daniel", "Ward", , "daniel.ward@ons.gov.uk", role = c("aut", "cre"),
            comment = c(ORCID = "0000-0003-2498-0034"))
-Description: Packaged dashboard to facilitate fitting a dynamic population model (DPM) using accountTMB. Allows for running single runs or for running comparisons between data model selections.
-Imports: DT, shiny, numbers, shinydashboard,  ggplot2, dplyr, plotly, shinyWidgets, accountTMB, here, tibble, utils, markdown, knitr, stringr
+Description: Packaged dashboard to facilitate fitting a dynamic population model (DPM) using dpmaccount. Allows for running single runs or for running comparisons between data model selections.
+Imports: DT, shiny, numbers, shinydashboard,  ggplot2, dplyr, plotly, shinyWidgets, dpmaccount, here, tibble, utils, markdown, knitr, stringr
 License: MIT + file LICENSE
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)

@@ -5,7 +5,7 @@
 
 This interactive dashboard empowers you to explore and model your data
 using the dynamic population model (DPM) framework provided by the
-`accountTMB` R package. This guide will walk you through the features
+`dpmaccount` R package. This guide will walk you through the features
 and functionalities of the dashboard, helping you to configure models,
 run estimations, compare different setups, and analyse model sensitivity
 efficiently.
@@ -35,7 +35,7 @@ accounting:
     approximate what a skilled analyst would know about the quality and
     characteristics of the available data sources.
 3.  **Model Fitting & Estimation**: Using the defined system and data
-    models, the `accountTMB` package fits the demographic account,
+    models, the `dpmaccount` package fits the demographic account,
     reconciling different data sources and prior knowledge to produce
     coherent estimates.
 4.  **Results Exploration & Comparison**: The dashboard allows for
@@ -46,7 +46,7 @@ accounting:
     sensitive the model outputs are to changes in key input parameters.
 
 This dashboard aims to streamline this process, making the powerful
-features of `accountTMB` more accessible.
+features of `dpmaccount` more accessible.
 
 ------------------------------------------------------------------------
 
@@ -85,7 +85,7 @@ global parameters that will be used throughout your session.
     or a range like `2000,2001,2002,2003,2004,2005`.
 - **Seed Value (`global_seed_value`)**:
   - **Purpose**: Sets the random seed for any stochastic processes
-    within the model fitting (e.g., in `accountTMB`). Using a specific
+    within the model fitting (e.g., in `dpmaccount`). Using a specific
     seed ensures reproducibility of your results.
   - **Default**: A randomly generated prime number (changes with each
     session).
@@ -123,7 +123,7 @@ models**: one each for births, deaths, immigration (ins), and emigration
       - **CSV File**: If you have specific dispersion values (e.g.,
         varying by age or time), provide the name of a `.csv` file
         containing this data. The file should have a structure
-        compatible with what `accountTMB` expects for dispersion.
+        compatible with what `dpmaccount` expects for dispersion.
     - **Optional Parameters (Collapsible Section)**:
       - **Lower Rate Limit**: Minimum plausible rate. Any rate in your
         input file below this will be imputed with this limit. Default:
@@ -190,7 +190,7 @@ Data models describe the characteristics of your observed data sources
       flows), or `outs` (for emigration flows).
     - **Choose Data Model**: Select the statistical distribution that
       best describes the error structure of your data source. Options
-      available from `accountTMB` include:
+      available from `dpmaccount` include:
       - `Exact Data Model`: Assumes data is perfectly accurate (no
         error).
       - `Normal Data Model`: Assumes errors are normally distributed.
@@ -212,7 +212,7 @@ Data models describe the characteristics of your observed data sources
   - **Optional Inputs (Collapsible Section)**:
     - **Coverage Ratio Type**: Specify if the coverage ratio (adjustment
       for under/over-count) is a single value or comes from a CSV file.
-    - **Scale Ratio**: A parameter available in `accountTMB` to account
+    - **Scale Ratio**: A parameter available in `dpmaccount` to account
       for potential issues with coverage adjustment of stocks/flows data
       (e.g. scale_ratio = 0.05 can be used to account for a
       misadjustment on 5%).
@@ -267,7 +267,7 @@ specified system and data models.
     that cover births, deaths, and population stocks for a standard run.
 - **Action**:
   - Click **“Fit Model”**. This initiates the
-    `accountTMB::estimate_account` function. A progress bar will
+    `dpmaccount::estimate_account` function. A progress bar will
     indicate the status.
 - **Results Display**:
   - **Cohort Results**: Shows a summary of how many cohorts were
@@ -295,7 +295,7 @@ estimates from the last model fit on the “Fit Model” tab.
   - **Time**: Select a specific time period to display.
   - **Compare Column**: Optionally, enter the name of a column from your
     input data (that was included in the `population_estimates.csv` by
-    `accountTMB`, often an original stock count data model output) to
+    `dpmaccount`, often an original stock count data model output) to
     overlay onto the plot for comparison against the fitted estimates
     (e.g., `stock_observed`).
 - **Plot**: An interactive plot shows the population counts by age and
@@ -335,7 +335,7 @@ Here, you define and run the two setups you wish to compare.
     - **Data Models**: Select one or more data models.
 - **Action**:
   - Click **“Compare Models”**. The dashboard will fit both setups
-    sequentially using `accountTMB::estimate_account`.
+    sequentially using `dpmaccount::estimate_account`.
 - **Results Display**:
   - **Aggregate estimates comparisons**: A series of plots will appear,
     showing aggregated comparisons (e.g., total population, total
@@ -415,7 +415,7 @@ Configure and execute the sensitivity analysis.
     1.  Take your base model configuration.
     2.  For each step in the specified parameter range:
         1.  Modify the chosen parameter to the current step’s value.
-        2.  Re-run the `accountTMB::estimate_account` function with this
+        2.  Re-run the `dpmaccount::estimate_account` function with this
             modified configuration.
         3.  Store the key results (augmented population and migration).
   - **Feedback**: A status message will indicate the progress and
@@ -508,7 +508,7 @@ Visualise how migration estimates (immigration and emigration) change.
       with more extreme outliers (heavier tails) than a normal
       distribution would suggest. You’ll need to provide a ‘scale’
       parameter (similar to SD) and degrees of freedom (often fixed
-      within the `accountTMB` functions using this).
+      within the `dpmaccount` functions using this).
     - Consider the nature of your data and the likely sources and
       magnitude of error when choosing.
 - **Q: I’ve clicked “Fit Model” (or “Compare Models” / “Run Sensitivity
@@ -516,7 +516,7 @@ Visualise how migration estimates (immigration and emigration) change.
   results tabs.**
   - A:
     1.  Check the main R console where you launched the Shiny app. There
-        might be error messages from `accountTMB` or other R functions
+        might be error messages from `dpmaccount` or other R functions
         that didn’t appear as pop-ups in the dashboard.
     2.  In the “Fit Model” tab, look at the “Cohort Results” and “Cohort
         Failures” tables. If many cohorts failed, the overall estimation
@@ -555,12 +555,12 @@ Visualise how migration estimates (immigration and emigration) change.
 
 ## 3. Additional Resources
 
-- **`accountTMB` Package Documentation**: For detailed information on
+- **`dpmaccount` Package Documentation**: For detailed information on
   the underlying functions, model specifications, and theoretical
   background, please refer to the official documentation for the
-  `accountTMB` R package.
-  - [View the accountTMB package on GitHub for detailed vignettes and
-    function help.](https://github.com/ONSdigital/accountTMB)
+  `dpmaccount` R package.
+  - [View the dpmaccount package on GitHub for detailed vignettes and
+    function help.](https://github.com/ONSdigital/dpmaccount)
 - **Demographic Accounting Principles**: Understanding the principles of
   demographic accounting can greatly enhance your use of this tool.
   Consider resources on:
@@ -570,14 +570,14 @@ Visualise how migration estimates (immigration and emigration) change.
     - Bryant, J., & Graham, J. (2013). Bayesian demographic accounts:
       Subnational Population Estimation Using Multiple Data Sources.
       *Bayesian Analysis* 8(3).
-- **Example Datasets**: The `/data` directory within the `accountTMB`
+- **Example Datasets**: The `/data` directory within the `dpmaccount`
   package may contain example RDA/CSV files that illustrate the expected
   formats for rates, counts, and dispersion data. Examining these can be
   very helpful for preparing your own input files.
 - **Reporting Issues/Seeking Support**:
-  - For questions related to the `accountTMB` package itself, refer to
-    the support channels provided by that package [accountTMB
-    issues](https://github.com/ONSdigital/accountTMB/issues).
+  - For questions related to the `dpmaccount` package itself, refer to
+    the support channels provided by that package [dpmaccount
+    issues](https://github.com/ONSdigital/dpmaccount/issues).
   - If you encounter bugs with the dashboard or have suggestions for
     improvement, please report them via the project’s issue tracker:
     [dpm.dash Issues](https://github.com/ONSBigData/dpm.dash/issues).

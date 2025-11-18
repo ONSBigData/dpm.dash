@@ -2,7 +2,7 @@
 % Please edit documentation in R/functions.R
 \name{create_data_model}
 \alias{create_data_model}
-\title{Create a Custom accountTMB Data Model}
+\title{Create a Custom dpmaccount Data Model}
 \usage{
 create_data_model(
   dm_name,
@@ -61,13 +61,13 @@ create_data_model(
 \item{count_scaler}{(Optional) A numeric scale term to apply to the count (default is 1)}
 }
 \value{
-An object of class \code{accountTMB_datamod} representing the created data model. This object can be used in subsequent accountTMB analyses.
+An object of class \code{accountTMB_datamod} representing the created data model. This object can be used in subsequent dpmaccount analyses.
 }
 \description{
-This function creates a data model object (of class \code{accountTMB_datamod}) tailored for use in accountTMB, a package for accounting time series modeling. The function supports various data model types based on the underlying distribution assumptions.
+This function creates a data model object (of class \code{accountTMB_datamod}) tailored for use in dpmaccount, a package for accounting time series modeling. The function supports various data model types based on the underlying distribution assumptions.
 }
 \details{
-This function streamlines the creation of data models compatible with accountTMB. It offers flexibility by supporting different distribution types to match your specific data and analysis needs.
+This function streamlines the creation of data models compatible with dpmaccount. It offers flexibility by supporting different distribution types to match your specific data and analysis needs.
 }
 \examples{
 # Example usage (assuming you have appropriate data frames):

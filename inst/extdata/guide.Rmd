@@ -14,7 +14,7 @@ knitr::opts_chunk$set(
 
 # Welcome to the DPM Dashboard
 
-This interactive dashboard empowers you to explore and model your data using the dynamic population model (DPM) framework provided by the `accountTMB` R package. This guide will walk you through the features and functionalities of the dashboard, helping you to configure models, run estimations, compare different setups, and analyse model sensitivity efficiently.
+This interactive dashboard empowers you to explore and model your data using the dynamic population model (DPM) framework provided by the `dpmaccount` R package. This guide will walk you through the features and functionalities of the dashboard, helping you to configure models, run estimations, compare different setups, and analyse model sensitivity efficiently.
 
 ## 0. Introduction
 
@@ -24,11 +24,11 @@ The dashboard facilitates a structured approach to demographic accounting:
 
 1.  **System Models Definition**: The first step is to define system models. These are constructed using estimated rates of births, deaths, and migration (ins and outs), along with associated measures of uncertainty in the form of dispersions. These models approximate what a skilled analyst would know or assume about underlying demographic trends and their regularity.
 2.  **Data Models Specification**: The next step is to specify statistical data models for observed population stocks and demographic flows (e.g., births, deaths, migration counts from administrative sources). These models incorporate the variability and potential biases seen in the data due to factors like coverage issues, reporting errors, or definitional differences. They approximate what a skilled analyst would know about the quality and characteristics of the available data sources.
-3.  **Model Fitting & Estimation**: Using the defined system and data models, the `accountTMB` package fits the demographic account, reconciling different data sources and prior knowledge to produce coherent estimates.
+3.  **Model Fitting & Estimation**: Using the defined system and data models, the `dpmaccount` package fits the demographic account, reconciling different data sources and prior knowledge to produce coherent estimates.
 4.  **Results Exploration & Comparison**: The dashboard allows for detailed exploration of these estimates, including population structures and migration flows, and provides tools to compare results from different model configurations.
 5.  **Sensitivity Analysis**: Finally, tools are provided to assess how sensitive the model outputs are to changes in key input parameters.
 
-This dashboard aims to streamline this process, making the powerful features of `accountTMB` more accessible.
+This dashboard aims to streamline this process, making the powerful features of `dpmaccount` more accessible.
 
 ------------------------------------------------------------------------
 
@@ -53,7 +53,7 @@ This tab is the starting point for any analysis. It sets essential global parame
     -   **Default**: Empty (all time periods in the data will be used).
     -   **Format**: Enter as comma-separated years, e.g., `2000,2001,2005` or a range like `2000,2001,2002,2003,2004,2005`.
 -   **Seed Value (`global_seed_value`)**:
-    -   **Purpose**: Sets the random seed for any stochastic processes within the model fitting (e.g., in `accountTMB`). Using a specific seed ensures reproducibility of your results.
+    -   **Purpose**: Sets the random seed for any stochastic processes within the model fitting (e.g., in `dpmaccount`). Using a specific seed ensures reproducibility of your results.
     -   **Default**: A randomly generated prime number (changes with each session).
     -   **Usage**: For reproducible research or debugging, set this to a specific integer.
 
@@ -74,7 +74,7 @@ System models represent your prior knowledge and assumptions about the underlyin
         -   **Rates CSV Filename**: Provide the name of the `.csv` file containing the rates data. This file should be in the **Input Data Directory** (specified in Global Config) and generally include columns for `age`, `sex` (except for births), `time`, and `rate`.
         -   **Dispersion Input Type**: Dispersion represents the uncertainty associated with the rates.
             -   **Single Value**: If you assume a constant dispersion across all ages/sexes/times for that rate, select this and enter a numeric value (e.g., `0.05`).
-            -   **CSV File**: If you have specific dispersion values (e.g., varying by age or time), provide the name of a `.csv` file containing this data. The file should have a structure compatible with what `accountTMB` expects for dispersion.
+            -   **CSV File**: If you have specific dispersion values (e.g., varying by age or time), provide the name of a `.csv` file containing this data. The file should have a structure compatible with what `dpmaccount` expects for dispersion.
         -   **Optional Parameters (Collapsible Section)**:
             -   **Lower Rate Limit**: Minimum plausible rate. Any rate in your input file below this will be imputed with this limit. Default: `1e-6`.
             -   **Rate Scaler**: A factor to multiply the rates by. Useful for adjustments or scenario testing. Default: `1`.
@@ -107,7 +107,7 @@ Data models describe the characteristics of your observed data sources (populati
     -   **Required Inputs**:
         -   **Data Model Name (`dm_name`)**: A unique name for this specific data model (e.g., "Population_Census_2021", "Admin_Immigration_Data"). **This name must be unique across all data models.**
         -   **Choose Series Type**: Select the type of demographic series this data represents: `population` (for stocks), `ins` (for immigration flows), or `outs` (for emigration flows).
-        -   **Choose Data Model**: Select the statistical distribution that best describes the error structure of your data source. Options available from `accountTMB` include:
+        -   **Choose Data Model**: Select the statistical distribution that best describes the error structure of your data source. Options available from `dpmaccount` include:
             -   `Exact Data Model`: Assumes data is perfectly accurate (no error).
             -   `Normal Data Model`: Assumes errors are normally distributed. Requires an uncertainty (SD or variance) CSV.
             -   `T-Dist Data Model`: Assumes errors follow a t-distribution (heavier tails than normal). Requires scale parameter input.
@@ -118,7 +118,7 @@ Data models describe the characteristics of your observed data sources (populati
         -   **Additional Inputs (Dynamic)**: Depending on the "Choose Data Model" selection, further inputs might appear (e.g., filename for uncertainty/scale/dispersion CSVs, or direct numeric input for parameters).
     -   **Optional Inputs (Collapsible Section)**:
         -   **Coverage Ratio Type**: Specify if the coverage ratio (adjustment for under/over-count) is a single value or comes from a CSV file.
-        -   **Scale Ratio**: A parameter available in `accountTMB` to account for potential issues with coverage adjustment of stocks/flows data (e.g. scale_ratio = 0.05 can be used to account for a misadjustment on 5%).
+        -   **Scale Ratio**: A parameter available in `dpmaccount` to account for potential issues with coverage adjustment of stocks/flows data (e.g. scale_ratio = 0.05 can be used to account for a misadjustment on 5%).
         -   **Count Scaler**: Allows for scaling the stock/flow counts.
         -   **Age/Time Selection**: Strings to subset the data from this specific data model (e.g., `0:10,65:80` for ages, `2010,2015:2019` for time).
         -   **Minimum SD**: A parameter to set a minumum uncertainty to apply for data models with set uncertainties (e.g. Normal/Log-Normal).
@@ -144,7 +144,7 @@ This tab is where you fit the demographic accounting model using your specified 
     -   **Select System Models**: Choose **one** system model setup (created in tab 1.2.1) from the radio buttons. This setup (comprising births, deaths, ins, and outs system models) will be used for the fit.
     -   **Select Data Models**: Choose **one or more** data models (created in tab 1.2.2) using the checkboxes. These represent the observed data the model will try to reconcile. You must include data models that cover births, deaths, and population stocks for a standard run.
 -   **Action**:
-    -   Click **"Fit Model"**. This initiates the `accountTMB::estimate_account` function. A progress bar will indicate the status.
+    -   Click **"Fit Model"**. This initiates the `dpmaccount::estimate_account` function. A progress bar will indicate the status.
 -   **Results Display**:
     -   **Cohort Results**: Shows a summary of how many cohorts were successfully fitted by the model.
     -   **Cohort Failures**: If any cohorts failed to converge or had issues, they will be listed in this table with diagnostic information.
@@ -159,7 +159,7 @@ This sub-tab provides an interactive visualisation of the population estimates f
 
 -   **Controls**:
     -   **Time**: Select a specific time period to display.
-    -   **Compare Column**: Optionally, enter the name of a column from your input data (that was included in the `population_estimates.csv` by `accountTMB`, often an original stock count data model output) to overlay onto the plot for comparison against the fitted estimates (e.g., `stock_observed`).
+    -   **Compare Column**: Optionally, enter the name of a column from your input data (that was included in the `population_estimates.csv` by `dpmaccount`, often an original stock count data model output) to overlay onto the plot for comparison against the fitted estimates (e.g., `stock_observed`).
 -   **Plot**: An interactive plot shows the population counts by age and sex for the selected time, including confidence intervals for the fitted estimates. If a "Compare Column" is specified and valid, those points will also be shown.
 
 #### 1.3.2 Migration Estimates Sub-Tab
@@ -189,7 +189,7 @@ Here, you define and run the two setups you wish to compare.
         -   **System Models**: Select one system model setup.
         -   **Data Models**: Select one or more data models.
 -   **Action**:
-    -   Click **"Compare Models"**. The dashboard will fit both setups sequentially using `accountTMB::estimate_account`.
+    -   Click **"Compare Models"**. The dashboard will fit both setups sequentially using `dpmaccount::estimate_account`.
 -   **Results Display**:
     -   **Aggregate estimates comparisons**: A series of plots will appear, showing aggregated comparisons (e.g., total population, total immigration/emigration, net migration over time) between Setup 1 and Setup 2. It also includes plots of the differences (absolute and percent) in these aggregate estimates.
 
@@ -242,7 +242,7 @@ Configure and execute the sensitivity analysis.
         1.  Take your base model configuration.
         2.  For each step in the specified parameter range:
             a.  Modify the chosen parameter to the current step's value.
-            b.  Re-run the `accountTMB::estimate_account` function with this modified configuration.
+            b.  Re-run the `dpmaccount::estimate_account` function with this modified configuration.
             c.  Store the key results (augmented population and migration).
     -   **Feedback**: A status message will indicate the progress and completion of the analysis. This can take some time if many steps or complex models are involved.
 
@@ -283,11 +283,11 @@ Visualise how migration estimates (immigration and emigration) change.
         -   `Exact Data Model`: If you believe the stock data is perfectly accurate (rarely the case for admin data).
         -   `Normal Data Model`: If you assume errors are symmetrically distributed around the true value and you can provide estimates of the standard deviation (or variance) of these errors in a separate CSV file.
         -   `Log-Normal Data Model`: If errors are multiplicative and the log of the counts is normally distributed. Also requires an uncertainty CSV (for the log scale).
-        -   `T-Dist Data Model`: If you suspect errors might be symmetric but with more extreme outliers (heavier tails) than a normal distribution would suggest. You'll need to provide a 'scale' parameter (similar to SD) and degrees of freedom (often fixed within the `accountTMB` functions using this).
+        -   `T-Dist Data Model`: If you suspect errors might be symmetric but with more extreme outliers (heavier tails) than a normal distribution would suggest. You'll need to provide a 'scale' parameter (similar to SD) and degrees of freedom (often fixed within the `dpmaccount` functions using this).
         -   Consider the nature of your data and the likely sources and magnitude of error when choosing.
 -   **Q: I've clicked "Fit Model" (or "Compare Models" / "Run Sensitivity Analysis"), but I don't see any plots or tables updating in the results tabs.**
     -   A:
-        1.  Check the main R console where you launched the Shiny app. There might be error messages from `accountTMB` or other R functions that didn't appear as pop-ups in the dashboard.
+        1.  Check the main R console where you launched the Shiny app. There might be error messages from `dpmaccount` or other R functions that didn't appear as pop-ups in the dashboard.
         2.  In the "Fit Model" tab, look at the "Cohort Results" and "Cohort Failures" tables. If many cohorts failed, the overall estimation might be problematic, leading to no valid augmented results to display.
         3.  Ensure that your input data (rates, counts, dispersions) are correctly formatted and cover the necessary age, sex, and time dimensions without large gaps or inconsistencies.
 -   **Q: In the "Compare Setups" tab, what do the residual plots show?**
@@ -305,14 +305,14 @@ Visualise how migration estimates (immigration and emigration) change.
 
 ## 3. Additional Resources
 
--   **`accountTMB` Package Documentation**: For detailed information on the underlying functions, model specifications, and theoretical background, please refer to the official documentation for the `accountTMB` R package.
-    -   [View the accountTMB package on GitHub for detailed vignettes and function help.](https://github.com/ONSdigital/accountTMB)
+-   **`dpmaccount` Package Documentation**: For detailed information on the underlying functions, model specifications, and theoretical background, please refer to the official documentation for the `dpmaccount` R package.
+    -   [View the dpmaccount package on GitHub for detailed vignettes and function help.](https://github.com/ONSdigital/dpmaccount)
 -   **Demographic Accounting Principles**: Understanding the principles of demographic accounting can greatly enhance your use of this tool. Consider resources on:
     -   Coherent demographic estimation and population reconciliation.
     -   Bayesian approaches to demographic modeling.
     -   Relevant literature such as:
         -   Bryant, J., & Graham, J. (2013). Bayesian demographic accounts: Subnational Population Estimation Using Multiple Data Sources. *Bayesian Analysis* 8(3).
--   **Example Datasets**: The `/data` directory within the `accountTMB` package may contain example RDA/CSV files that illustrate the expected formats for rates, counts, and dispersion data. Examining these can be very helpful for preparing your own input files.
+-   **Example Datasets**: The `/data` directory within the `dpmaccount` package may contain example RDA/CSV files that illustrate the expected formats for rates, counts, and dispersion data. Examining these can be very helpful for preparing your own input files.
 -   **Reporting Issues/Seeking Support**:
-    -   For questions related to the `accountTMB` package itself, refer to the support channels provided by that package [accountTMB issues](https://github.com/ONSdigital/accountTMB/issues).
+    -   For questions related to the `dpmaccount` package itself, refer to the support channels provided by that package [dpmaccount issues](https://github.com/ONSdigital/dpmaccount/issues).
     -   If you encounter bugs with the dashboard or have suggestions for improvement, please report them via the project's issue tracker: [dpm.dash Issues](https://github.com/ONSBigData/dpm.dash/issues).

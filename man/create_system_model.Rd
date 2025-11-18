@@ -2,7 +2,7 @@
 % Please edit documentation in R/functions.R
 \name{create_system_model}
 \alias{create_system_model}
-\title{Create a accountTMB System Model}
+\title{Create a dpmaccount System Model}
 \usage{
 create_system_model(
   model_name,
@@ -12,7 +12,10 @@ create_system_model(
   lower_rates_limit = 0,
   rate_scaler = 1,
   rate_overide = -1,
-  rate_noise = 0
+  rate_noise = 0,
+  age_target = "0:105",
+  sex_target = "Male, Female",
+  time_target = "all"
 )
 }
 \arguments{
@@ -33,13 +36,13 @@ create_system_model(
 \item{rate_noise}{(Optional) A numeric noise term to apply to t he raw rate in the rates_df (as a \% of the raw rate e.g. rate_noise = 0.1 is equal to 10\% noise)}
 }
 \value{
-An object of class \code{accountTMB_sysmod} representing the created system model. This object can be used in subsequent accountTMB analyses.
+An object of class \code{accountTMB_sysmod} representing the created system model. This object can be used in subsequent dpmaccount analyses.
 }
 \description{
-This function creates a system model object (of class \code{accountTMB_sysmod}) for use in accountTMB, a package for accounting time series modeling. The system model describes the mean and dispersion of the rates over time.
+This function creates a system model object (of class \code{accountTMB_sysmod}) for use in dpmaccount, a package for accounting time series modeling. The system model describes the mean and dispersion of the rates over time.
 }
 \details{
-This function simplifies the creation of system models compatible with accountTMB. It allows you to model the mean and dispersion of rates, optionally focusing on specific time periods if desired.
+This function simplifies the creation of system models compatible with dpmaccount. It allows you to model the mean and dispersion of rates, optionally focusing on specific time periods if desired.
 }
 \examples{
 # Example usage (assuming you have an appropriate rates data frame):

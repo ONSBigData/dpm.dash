@@ -29,8 +29,9 @@ library(here) # For constructing file paths relative to the project root.
 library(numbers) # Used here for generating a prime number for the default seed.
 library(stringr) # For string manipulation.
 
+#' @importFrom magrittr %>%
 # Define the main UI structure for the dashboard page.
-ui_sens <- shinydashboard::dashboardPage(
+ui_dash <- shinydashboard::dashboardPage(
   # Define the header of the dashboard.
   shinydashboard::dashboardHeader(title = "DPM Dashboard (dev)"), # Sets the title displayed in the dashboard header.
   # Define the sidebar of the dashboard.
@@ -595,26 +596,22 @@ ui_sens <- shinydashboard::dashboardPage(
           # Box for system model parameter sensitivity.
           shinydashboard::box(
             title = "System Model Parameter Sensitivity", width = 6, solidHeader = TRUE, status = "info", collapsible = TRUE,
-            # Dropdown to select which system model parameter to vary.
-            shiny::selectInput("sa_sysmod_param_select", "Select System Model Parameter to Vary:",
+            shiny::selectInput("sa_rate_select", "Select System Model Rate to Vary:",
               choices = c( # Predefined choices for system model parameters.
                 "None",
-                "Dispersion (Births)" = "births_dispersion",
-                "Dispersion (Deaths)" = "deaths_dispersion",
-                "Dispersion (Ins)" = "ins_dispersion",
-                "Dispersion (Outs)" = "outs_dispersion",
-                "Lower Rate Limit (Births)" = "births_lower_rate_limit",
-                "Lower Rate Limit (Deaths)" = "deaths_lower_rate_limit",
-                "Lower Rate Limit (Ins)" = "ins_lower_rate_limit",
-                "Lower Rate Limit (Outs)" = "outs_lower_rate_limit",
-                "Rate Scaler (Births)" = "births_rate_scale",
-                "Rate Scaler (Deaths)" = "deaths_rate_scale",
-                "Rate Scaler (Ins)" = "ins_rate_scale",
-                "Rate Scaler (Outs)" = "outs_rate_scale",
-                "Rate Noise (Births)" = "births_rate_noise",
-                "Rate Noise (Deaths)" = "deaths_rate_noise",
-                "Rate Noise (Ins)" = "ins_rate_noise",
-                "Rate Noise (Outs)" = "outs_rate_noise"
+                "Births" = "births",
+                "Deaths" = "deaths",
+                "Ins" = "ins",
+                "Outs" = "outs"
+              )
+            ),
+            shiny::selectInput("sa_modification_select", "Select System Model Parameter to Vary:",
+              choices = c( # Predefined choices for system model parameters.
+                "None",
+                "Dispersion" = "dispersion",
+                "Lower Rate Limit" = "lower_rate_limit",
+                "Rate Scaler" = "rate_scale",
+                "Rate Noise" = "rate_noise"
               )
             ),
             shiny::uiOutput("sa_sysmod_param_range_ui") # Dynamic UI for setting min, max, and steps for the selected parameter.
