@@ -18,19 +18,18 @@
 #   6.2. Population Results: View the population results of the parameter sweep chosen
 #   6.3. Migration Results: View the migration results of the parameter sweep chosen
 
+# Define the main UI structure for the dashboard page.
 # Load necessary libraries for the shiny dashboard, UI elements, data manipulation and plotting
-library(shinydashboard) # Provides the dashboard structure (header, sidebar, body).
-library(shiny) # C  ore Shiny library for reactive programming and UI elements.
-library(DT) # For creating interactive DataTables.
 library(ggplot2) # For creating static plots.
 library(plotly) # For creating interactive plots.
-library(dplyr) # For data manipulation.
-library(here) # For constructing file paths relative to the project root.
-library(numbers) # Used here for generating a prime number for the default seed.
-library(stringr) # For string manipulation.
 
+#' @importFrom shinydashboard menuItem dashboardBody tabItems tabItem box updateTabItems tabBox
+#' @importFrom DT dataTableOutput renderDataTable datatable
+#' @importFrom ggplot2 ggplot aes geom_ribbon geom_line geom_point geom_hline labs
+#' @importFrom ggplot2 theme_minimal facet_wrap facet_grid vars theme element_text
+#' @importFrom ggplot2 scale_color_manual scale_fill_manual
 #' @importFrom magrittr %>%
-# Define the main UI structure for the dashboard page.
+#' @importFrom plotly plotlyOutput renderPlotly ggplotly
 ui_dash <- shinydashboard::dashboardPage(
   # Define the header of the dashboard.
   shinydashboard::dashboardHeader(title = "DPM Dashboard (dev)"), # Sets the title displayed in the dashboard header.
@@ -40,46 +39,46 @@ ui_dash <- shinydashboard::dashboardPage(
     shinydashboard::sidebarMenu(
       id = "tabs", # Assign an ID to the sidebar menu for referencing.
       # Define the "Introduction" tab.
-      shinydashboard::menuItem("Introduction", tabName = "introDoc", icon = icon("book")), # Links to the "introDoc" tab content.
+      shinydashboard::menuItem("Introduction", tabName = "introDoc", icon = shiny::icon("book")), # Links to the "introDoc" tab content.
       # Define the "Global Configuration" tab.
-      shinydashboard::menuItem("Global Configuration", tabName = "globalConfig", icon = icon("cog")), # Links to the "globalConfig" tab content.
+      shinydashboard::menuItem("Global Configuration", tabName = "globalConfig", icon = shiny::icon("cog")), # Links to the "globalConfig" tab content.
       # Define a top-level menu item for "DPM Specification" with sub-items.
       shinydashboard::menuItem("DPM Specification",
-        tabName = "dpmSpec", icon = icon("cogs"), startExpanded = FALSE, # Main menu item, not directly a tab, but groups sub-items.
+        tabName = "dpmSpec", icon = shiny::icon("cogs"), startExpanded = FALSE, # Main menu item, not directly a tab, but groups sub-items.
         # Sub-item for "System Models" setup.
-        shinydashboard::menuSubItem("System Models", tabName = "systemModels", icon = icon("cogs")), # Links to the "systemModels" tab content.
+        shinydashboard::menuSubItem("System Models", tabName = "systemModels", icon = shiny::icon("cogs")), # Links to the "systemModels" tab content.
         # Sub-item for "Data Models" setup.
-        shinydashboard::menuSubItem("Data Models", tabName = "dataModels", icon = icon("database")) # Links to the "dataModels" tab content.
+        shinydashboard::menuSubItem("Data Models", tabName = "dataModels", icon = shiny::icon("database")) # Links to the "dataModels" tab content.
       ),
       # Define a top-level menu item for "DPM Running" with sub-items.
       shinydashboard::menuItem("DPM Running",
-        tabName = "dpmRunning", icon = icon("sliders-h"), startExpanded = FALSE, # Main menu item for model execution and results.
+        tabName = "dpmRunning", icon = shiny::icon("sliders-h"), startExpanded = FALSE, # Main menu item for model execution and results.
         # Sub-item for "Fit Model".
-        shinydashboard::menuSubItem("Fit Model", tabName = "fitModel", icon = icon("sliders-h")), # Links to the "fitModel" tab content.
+        shinydashboard::menuSubItem("Fit Model", tabName = "fitModel", icon = shiny::icon("sliders-h")), # Links to the "fitModel" tab content.
         # Sub-item for "Population Estimates".
-        shinydashboard::menuSubItem("Population Estimates", tabName = "popEstimates", icon = icon("people-roof")), # Links to the "popEstimates" tab content.
+        shinydashboard::menuSubItem("Population Estimates", tabName = "popEstimates", icon = shiny::icon("people-roof")), # Links to the "popEstimates" tab content.
         # Sub-item for "Migration Estimates".
-        shinydashboard::menuSubItem("Migration Estimates", tabName = "migEstimates", icon = icon("plane")) # Links to the "migEstimates" tab content.
+        shinydashboard::menuSubItem("Migration Estimates", tabName = "migEstimates", icon = shiny::icon("plane")) # Links to the "migEstimates" tab content.
       ),
       # Define a top-level menu item for "Compare Setups" with sub-items.
       shinydashboard::menuItem("Compare Setups",
-        tabName = "setupComparing", icon = icon("chart-bar"), startExpanded = FALSE, # Main menu item for comparing different model setups.
+        tabName = "setupComparing", icon = shiny::icon("chart-bar"), startExpanded = FALSE, # Main menu item for comparing different model setups.
         # Sub-item for fitting models to compare.
-        shinydashboard::menuSubItem("Fit Models", tabName = "fitModels", icon = icon("sliders-h")), # Links to the "fitModels" tab for comparison.
+        shinydashboard::menuSubItem("Fit Models", tabName = "fitModels", icon = shiny::icon("sliders-h")), # Links to the "fitModels" tab for comparison.
         # Sub-item for comparing population estimates.
-        shinydashboard::menuSubItem("Compare Population Estimates", tabName = "compPopEstimates", icon = icon("people-roof")), # Links to compare population results.
+        shinydashboard::menuSubItem("Compare Population Estimates", tabName = "compPopEstimates", icon = shiny::icon("people-roof")), # Links to compare population results.
         # Sub-item for comparing migration estimates.
-        shinydashboard::menuSubItem("Compare Migration Estimates", tabName = "compMigEstimates", icon = icon("plane")) # Links to compare migration results.
+        shinydashboard::menuSubItem("Compare Migration Estimates", tabName = "compMigEstimates", icon = shiny::icon("plane")) # Links to compare migration results.
       ),
       # Define a top-level menu item for "Model Sensitivity Analysis" with sub-items.
       shinydashboard::menuItem("Model Sensitivity Analysis",
-        tabName = "sensitivityAnalysis", icon = icon("flask"), startExpanded = FALSE, # Main menu item for sensitivity analysis.
+        tabName = "sensitivityAnalysis", icon = shiny::icon("flask"), startExpanded = FALSE, # Main menu item for sensitivity analysis.
         # Sub-item for setting up and running sensitivity analysis.
-        shinydashboard::menuSubItem("Setup & Run", tabName = "saSetupRun", icon = icon("play-circle")), # Links to sensitivity analysis setup.
+        shinydashboard::menuSubItem("Setup & Run", tabName = "saSetupRun", icon = shiny::icon("play-circle")), # Links to sensitivity analysis setup.
         # Sub-item for viewing population results from sensitivity analysis.
-        shinydashboard::menuSubItem("Population Results", tabName = "saPopResults", icon = icon("people-group")), # Links to sensitivity analysis population results.
+        shinydashboard::menuSubItem("Population Results", tabName = "saPopResults", icon = shiny::icon("people-group")), # Links to sensitivity analysis population results.
         # Sub-item for viewing migration results from sensitivity analysis.
-        shinydashboard::menuSubItem("Migration Results", tabName = "saMigResults", icon = icon("route")) # Links to sensitivity analysis migration results.
+        shinydashboard::menuSubItem("Migration Results", tabName = "saMigResults", icon = shiny::icon("route")) # Links to sensitivity analysis migration results.
       )
     )
   ),
@@ -132,7 +131,7 @@ ui_dash <- shinydashboard::dashboardPage(
         # Row for navigation buttons.
         shiny::fluidRow(
           # Column for the "Continue" button.
-          shiny::column(width = 2, actionButton("goSM", "Continue"), icon = icon("arrow-right")), # Navigates to System Models.
+          shiny::column(width = 2, shiny::actionButton("goSM", "Continue"), icon = shiny::icon("arrow-right")), # Navigates to System Models.
         )
       ),
       # Content for the "System Models" tab.
@@ -167,7 +166,7 @@ ui_dash <- shinydashboard::dashboardPage(
             lapply(c("births", "deaths", "ins", "outs"), function(model) {
               shinydashboard::box(
                 title = paste(model, "System Model"), width = 6, status = "primary", # Title for each model type.
-                fluidRow(
+                shiny::fluidRow(
                   # Box for required inputs for each system model.
                   shinydashboard::box(
                     title = "Required", width = 12,
@@ -178,7 +177,7 @@ ui_dash <- shinydashboard::dashboardPage(
                     # Conditional panel: shows if "Single Value" dispersion is selected.
                     shiny::conditionalPanel(
                       condition = sprintf("input.%s_disp_type == 'Single Value'", model), # Condition based on radio button selection.
-                      numericInput(paste0(model, "_disp_value"), paste(model, "Dispersion Value"), value = 0.05) # Numeric input for dispersion value.
+                      shiny::numericInput(paste0(model, "_disp_value"), paste(model, "Dispersion Value"), value = 0.05) # Numeric input for dispersion value.
                     ),
                     # Conditional panel: shows if "CSV File" dispersion is selected.
                     shiny::conditionalPanel(
@@ -187,7 +186,7 @@ ui_dash <- shinydashboard::dashboardPage(
                     )
                   )
                 ),
-                fluidRow(
+                shiny::fluidRow(
                   # Box for optional inputs, collapsible.
                   shinydashboard::box(
                     title = "Optional", width = 12, collapsible = TRUE, collapsed = TRUE, # Initially collapsed.
@@ -235,8 +234,8 @@ ui_dash <- shinydashboard::dashboardPage(
         ),
         # Row for navigation buttons.
         shiny::fluidRow(
-          shiny::column(width = 2, actionButton("goGC", "Back"), icon = icon("arrow-left")), # Navigates back to Global Config.
-          shiny::column(width = 2, actionButton("goDM", "Continue"), icon = icon("arrow-right")), # Navigates to Data Models.
+          shiny::column(width = 2, shiny::actionButton("goGC", "Back"), icon = shiny::icon("arrow-left")), # Navigates back to Global Config.
+          shiny::column(width = 2, shiny::actionButton("goDM", "Continue"), icon = shiny::icon("arrow-right")), # Navigates to Data Models.
         ),
         # Row for displaying model summaries and plots.
         shiny::fluidRow(
@@ -356,8 +355,8 @@ ui_dash <- shinydashboard::dashboardPage(
         ),
         # Row for navigation buttons.
         shiny::fluidRow(
-          shiny::column(width = 2, actionButton("goSM", "Back"), icon = icon("arrow-left")), # Navigates back to System Models.
-          shiny::column(width = 2, actionButton("goFM", "Continue"), icon = icon("arrow-right")), # Navigates to Fit Model.
+          shiny::column(width = 2, shiny::actionButton("goSM", "Back"), icon = shiny::icon("arrow-left")), # Navigates back to System Models.
+          shiny::column(width = 2, shiny::actionButton("goFM", "Continue"), icon = shiny::icon("arrow-right")), # Navigates to Fit Model.
         )
       ),
       # Content for the "Fit Model" tab.
@@ -388,7 +387,7 @@ ui_dash <- shinydashboard::dashboardPage(
           # Box for cohort results summary.
           shinydashboard::box(
             title = "Cohort Results", solidHeader = TRUE, status = "primary",
-            column(
+            shiny::column(
               width = 6,
               shiny::textOutput("cohortResults") # Text output for displaying cohort results.
             )
@@ -396,7 +395,7 @@ ui_dash <- shinydashboard::dashboardPage(
           # Box for cohort diagnostic information (e.g., failures).
           shinydashboard::box(
             title = "Cohort Failures", solidHeader = TRUE, status = "primary",
-            column(
+            shiny::column(
               width = 6,
               DT::DTOutput("cohortDiagnostics") # Interactive table for cohort diagnostics.
             )
@@ -412,8 +411,8 @@ ui_dash <- shinydashboard::dashboardPage(
         ),
         # Row for navigation buttons.
         shiny::fluidRow(
-          shiny::column(width = 2, actionButton("goDM", "Back"), icon = icon("arrow-left")), # Navigates back to Data Models.
-          shiny::column(width = 2, actionButton("goPE", "Continue"), icon = icon("arrow-right")), # Navigates to Population Estimates.
+          shiny::column(width = 2, shiny::actionButton("goDM", "Back"), icon = shiny::icon("arrow-left")), # Navigates back to Data Models.
+          shiny::column(width = 2, shiny::actionButton("goPE", "Continue"), icon = shiny::icon("arrow-right")), # Navigates to Population Estimates.
         )
       ),
       # Content for the "Population Estimates" tab.
@@ -421,15 +420,15 @@ ui_dash <- shinydashboard::dashboardPage(
         tabName = "popEstimates",
         # Row for input controls for population plots.
         shiny::fluidRow(
-          shiny::column(4, selectInput("time_select_pop", "Time", choices = NULL)), # Dropdown to select time period for plots.
-          shiny::column(4, textInput("compare_select_pop", "Compare Column")) # Text input to specify a column for comparison.
+          shiny::column(4, shiny::selectInput("time_select_pop", "Time", choices = NULL)), # Dropdown to select time period for plots.
+          shiny::column(4, shiny::textInput("compare_select_pop", "Compare Column")) # Text input to specify a column for comparison.
         ),
         # UI output for displaying population plots.
-        uiOutput("popPlots"),
+        shiny::uiOutput("popPlots"),
         # Row for navigation buttons.
         shiny::fluidRow(
-          shiny::column(width = 2, actionButton("goFM", "Back"), icon = icon("arrow-left")), # Navigates back to Fit Model.
-          shiny::column(width = 2, actionButton("goME", "Continue"), icon = icon("arrow-right")), # Navigates to Migration Estimates.
+          shiny::column(width = 2, shiny::actionButton("goFM", "Back"), icon = shiny::icon("arrow-left")), # Navigates back to Fit Model.
+          shiny::column(width = 2, shiny::actionButton("goME", "Continue"), icon = shiny::icon("arrow-right")), # Navigates to Migration Estimates.
         )
       ),
       # Content for the "Migration Estimates" tab.
@@ -437,17 +436,17 @@ ui_dash <- shinydashboard::dashboardPage(
         tabName = "migEstimates",
         # Row for input controls for migration plots.
         shiny::fluidRow(
-          shiny::column(4, selectInput("time_select_mig", "Time", choices = NULL)), # Dropdown for time period.
-          shiny::column(4, textInput("compare_select_ins", "Compare Ins")), # Text input for comparing immigration data.
-          shiny::column(4, textInput("compare_select_outs", "Compare Outs")) # Text input for comparing emigration data.
+          shiny::column(4, shiny::selectInput("time_select_mig", "Time", choices = NULL)), # Dropdown for time period.
+          shiny::column(4, shiny::textInput("compare_select_ins", "Compare Ins")), # Text input for comparing immigration data.
+          shiny::column(4, shiny::textInput("compare_select_outs", "Compare Outs")) # Text input for comparing emigration data.
         ),
         # UI outputs for immigration and emigration plots.
         shiny::uiOutput("immPlots"),
         shiny::uiOutput("emPlots"),
         # Row for navigation buttons.
         shiny::fluidRow(
-          shiny::column(width = 2, actionButton("goPE", "Back"), icon = icon("arrow-left")), # Navigates back to Population Estimates.
-          shiny::column(width = 2, actionButton("goSC", "Continue"), icon = icon("arrow-right")) # Navigates to Compare Setups (Fit Models part).
+          shiny::column(width = 2, shiny::actionButton("goPE", "Back"), icon = shiny::icon("arrow-left")), # Navigates back to Population Estimates.
+          shiny::column(width = 2, shiny::actionButton("goSC", "Continue"), icon = shiny::icon("arrow-right")) # Navigates to Compare Setups (Fit Models part).
         ),
       ),
       # Content for the "Fit Models" sub-tab under "Compare Setups".
@@ -507,14 +506,14 @@ ui_dash <- shinydashboard::dashboardPage(
         tabName = "compPopEstimates", # Must match the tabName in menuSubItem.
         # Row for selection inputs for comparison plots.
         shiny::fluidRow(
-          shiny::column(4, selectInput("time_select_comp", "Time", choices = NULL)), # Time selection.
-          shiny::column(4, selectInput("setup_select", "Setup", choices = c("Both", "Setup 1", "Setup 2"))), # Setup selection.
-          shiny::column(4, selectInput("residual_type", "Residual Type", choices = c("Absolute", "Percent"))) # Residual type for differences.
+          shiny::column(4, shiny::selectInput("time_select_comp", "Time", choices = NULL)), # Time selection.
+          shiny::column(4, shiny::selectInput("setup_select", "Setup", choices = c("Both", "Setup 1", "Setup 2"))), # Setup selection.
+          shiny::column(4, shiny::selectInput("residual_type", "Residual Type", choices = c("Absolute", "Percent"))) # Residual type for differences.
         ),
         # Row for selecting columns to compare from each setup's population data.
         shiny::fluidRow(
-          shiny::column(6, selectInput("compare_select_pop_1", "Compare Column 1", choices = NULL)), # Comparison column for setup 1.
-          shiny::column(6, selectInput("compare_select_pop_2", "Compare Column 2", choices = NULL)) # Comparison column for setup 2.
+          shiny::column(6, shiny::selectInput("compare_select_pop_1", "Compare Column 1", choices = NULL)), # Comparison column for setup 1.
+          shiny::column(6, shiny::selectInput("compare_select_pop_2", "Compare Column 2", choices = NULL)) # Comparison column for setup 2.
         ),
         # UI outputs for comparison plots and residual plots.
         shiny::uiOutput("compPlots"),
@@ -525,16 +524,16 @@ ui_dash <- shinydashboard::dashboardPage(
         tabName = "compMigEstimates", # Must match the tabName in menuSubItem.
         # Row for selection inputs.
         shiny::fluidRow(
-          shiny::column(4, selectInput("time_select_comp_mig", "Time", choices = NULL)), # Time selection.
-          shiny::column(4, selectInput("setup_select", "Setup", choices = c("Both", "Setup 1", "Setup 2"))), # Setup selection.
-          shiny::column(4, selectInput("residual_type", "Residual Type", choices = c("Absolute", "Percent"))) # Residual type.
+          shiny::column(4, shiny::selectInput("time_select_comp_mig", "Time", choices = NULL)), # Time selection.
+          shiny::column(4, shiny::selectInput("setup_select", "Setup", choices = c("Both", "Setup 1", "Setup 2"))), # Setup selection.
+          shiny::column(4, shiny::selectInput("residual_type", "Residual Type", choices = c("Absolute", "Percent"))) # Residual type.
         ),
         # Row for selecting comparison columns for immigration and emigration for both setups.
         shiny::fluidRow(
-          shiny::column(3, selectInput("compare_select_ins_1", "Compare Ins 1", choices = NULL)), # Immigration compare column setup 1.
-          shiny::column(3, selectInput("compare_select_ins_2", "Compare Ins 2", choices = NULL)), # Immigration compare column setup 2.
-          shiny::column(3, selectInput("compare_select_outs_1", "Compare Outs 1", choices = NULL)), # Emigration compare column setup 1.
-          shiny::column(3, selectInput("compare_select_outs_2", "Compare Outs 2", choices = NULL)) # Emigration compare column setup 2.
+          shiny::column(3, shiny::selectInput("compare_select_ins_1", "Compare Ins 1", choices = NULL)), # Immigration compare column setup 1.
+          shiny::column(3, shiny::selectInput("compare_select_ins_2", "Compare Ins 2", choices = NULL)), # Immigration compare column setup 2.
+          shiny::column(3, shiny::selectInput("compare_select_outs_1", "Compare Outs 1", choices = NULL)), # Emigration compare column setup 1.
+          shiny::column(3, shiny::selectInput("compare_select_outs_2", "Compare Outs 2", choices = NULL)) # Emigration compare column setup 2.
         ),
         shiny::fluidRow(), # Empty fluidRow, possibly for spacing or future content.
         # UI outputs for migration comparison plots and residuals.
@@ -544,7 +543,7 @@ ui_dash <- shinydashboard::dashboardPage(
         shiny::uiOutput("compPlotsEmigResiduals"),
         # Row for navigation button.
         shiny::fluidRow(
-          shiny::column(width = 2, actionButton("goME", "Back"), icon = icon("arrow-left")) # Navigates back to Migration Estimates (single model).
+          shiny::column(width = 2, shiny::actionButton("goME", "Back"), icon = shiny::icon("arrow-left")) # Navigates back to Migration Estimates (single model).
         )
       ),
       # Content for the "Setup & Run" sub-tab under "Model Sensitivity Analysis".
@@ -557,11 +556,11 @@ ui_dash <- shinydashboard::dashboardPage(
             shiny::p("Select a base system model setup and base data models. Then, choose parameters to vary for sensitivity analysis."),
             # Row for selecting base system and data models.
             shiny::fluidRow(
-              column(
+              shiny::column(
                 6,
                 shiny::uiOutput("sa_system_model_selector_ui") # UI output for selecting the base system model setup.
               ),
-              column(
+              shiny::column(
                 6,
                 shiny::uiOutput("sa_data_model_selector_ui") # UI output for selecting the base data models.
               )
@@ -573,17 +572,17 @@ ui_dash <- shinydashboard::dashboardPage(
             title = "Specific Targeting Parameters", width = 12, solidHeader = TRUE, status = "primary",
             shiny::p("Select some targeting parameters to test specific combinations of age/sex/time."),
             shiny::fluidRow(
-              column(
+              shiny::column(
                 4,
                 # Input for age targeted changes
                 shiny::textInput(paste0("sa", "_age_target"), paste("Optional: Age Target"), value = "0:105")
               ),
-              column(
+              shiny::column(
                 4,
                 # Input for time targeted changes
                 shiny::textInput(paste0("sa", "_sex_target"), paste("Optional: Sex Target"), value = "Male, Female")
               ),
-              column(
+              shiny::column(
                 4,
                 # Input for sex targeted changes
                 shiny::textInput(paste0("sa", "_time_target"), paste("Optional: Time Target"), value = "all")
@@ -630,7 +629,7 @@ ui_dash <- shinydashboard::dashboardPage(
         shiny::fluidRow(
           shinydashboard::box(
             width = 12, solidHeader = TRUE, status = "primary",
-            shiny::actionButton("run_sensitivity_analysis", "Run Sensitivity Analysis", icon = icon("cogs")), # Button to start the analysis.
+            shiny::actionButton("run_sensitivity_analysis", "Run Sensitivity Analysis", icon = shiny::icon("cogs")), # Button to start the analysis.
             shiny::hr(), # Horizontal rule for separation.
             shiny::textOutput("sensitivity_run_status") # Text output for displaying run status or feedback.
           )

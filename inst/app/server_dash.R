@@ -1,7 +1,7 @@
-#' Server Function for Shiny Application
+#' Server Function for DPM Dashboard Shiny Application
 #'
-#' This function defines the server-side logic for a Shiny application, managing reactive values and
-#' event observers to handle user inputs and dynamically update the UI components.
+#' This function defines the server-side logic for the DPM Dashboard Shiny application, 
+#' managing reactive values and event observers to handle user inputs and dynamically update the UI components.
 #'
 #' @param input The input object provided by Shiny, containing all user inputs.
 #' @param output The output object provided by Shiny, used to send outputs to the UI.
@@ -28,8 +28,6 @@
 #' @importFrom shiny showNotification observeEvent observe downloadButton
 #' @importFrom shiny downloadHandler includeMarkdown helpText updateSelectizeInput
 #' @importFrom shiny withProgress setProgress icon NS moduleServer
-#' @importFrom shinydashboard dashboardPage dashboardHeader dashboardSidebar sidebarMenu
-#' @importFrom shinydashboard menuItem dashboardBody tabItems tabItem box updateTabItems tabBox
 #' @importFrom DT dataTableOutput renderDataTable datatable
 #' @importFrom shinycssloaders withSpinner
 #' @importFrom sortable bucket_list add_rank_list
@@ -41,7 +39,6 @@
 #' @importFrom magrittr %>%
 #' @importFrom rlang expr sym new_formula call2 parse_expr env syms
 #' @importFrom rvec draws_ci is_rvec
-#' @importFrom tibble tibble
 #' @importFrom bage mod_pois set_prior fit augment components replicate_data
 #' @importFrom bage forecast report_sim
 #' @importFrom utils read.csv write.csv head tail
@@ -1015,7 +1012,7 @@ server_dash <- function(input, output, session) {
   output$popPlots <- shiny::renderUI({ # UI placeholder for the population plot.
     plotly::plotlyOutput("population_estimates_plot")
   })
-  output$population_estimates_plot <- renderPlotly({
+  output$population_estimates_plot <- plotly::renderPlotly({
     req(population_estimates_single_fit(), input$time_select_pop) # Require results and selected time.
     pop_data_to_plot <- population_estimates_single_fit() %>%
       dplyr::filter(.data$time == as.numeric(input$time_select_pop)) # Filter by selected time.
@@ -1045,7 +1042,7 @@ server_dash <- function(input, output, session) {
   output$immPlots <- shiny::renderUI({ # UI placeholder for immigration plot.
     plotlyOutput("immigration_estimates_plot")
   })
-  output$immigration_estimates_plot <- renderPlotly({
+  output$immigration_estimates_plot <- plotly::renderPlotly({
     req(migration_estimates_single_fit(), input$time_select_mig) # Require results and selected time.
     mig_data_to_plot <- migration_estimates_single_fit() %>%
       dplyr::filter(.data$time == as.numeric(input$time_select_mig))
@@ -1070,7 +1067,7 @@ server_dash <- function(input, output, session) {
   output$emPlots <- shiny::renderUI({ # UI placeholder for emigration plot.
     plotlyOutput("emigration_estimates_plot")
   })
-  output$emigration_estimates_plot <- renderPlotly({
+  output$emigration_estimates_plot <- plotly::renderPlotly({
     req(migration_estimates_single_fit(), input$time_select_mig)
     mig_data_to_plot <- migration_estimates_single_fit() %>%
       dplyr::filter(.data$time == as.numeric(input$time_select_mig))
@@ -2278,7 +2275,7 @@ server_dash <- function(input, output, session) {
 
   # --- Plotting Sensitivity Analysis Results ---
   # Plot for population estimates from SA.
-  output$sa_population_plot_output <- renderPlotly({
+  output$sa_population_plot_output <- plotly::renderPlotly({
     # Requires combined results, a selected time, and info about the varied parameter.
     req(sa_combined_pop_results(), input$sa_pop_time_select != "NA", sensitivity_varied_param_info())
     plot_data_sa_pop <- sa_combined_pop_results() %>% dplyr::filter(.data$time == as.numeric(input$sa_pop_time_select)) # Filter by selected time.
@@ -2310,7 +2307,7 @@ server_dash <- function(input, output, session) {
   })
 
   # Plot for immigration estimates from SA.
-  output$sa_immigration_plot_output <- renderPlotly({
+  output$sa_immigration_plot_output <- plotly::renderPlotly({
     req(sa_combined_mig_results(), input$sa_mig_time_select != "NA", sensitivity_varied_param_info())
     plot_data_sa_mig <- sa_combined_mig_results() %>% dplyr::filter(.data$time == as.numeric(input$sa_mig_time_select))
     varied_param_col_name <- sensitivity_varied_param_info()$name
@@ -2336,7 +2333,7 @@ server_dash <- function(input, output, session) {
   })
 
   # Plot for emigration estimates from SA.
-  output$sa_emigration_plot_output <- renderPlotly({
+  output$sa_emigration_plot_output <- plotly::renderPlotly({
     req(sa_combined_mig_results(), input$sa_mig_time_select != "NA", sensitivity_varied_param_info())
     plot_data_sa_mig <- sa_combined_mig_results() %>% dplyr::filter(.data$time == as.numeric(input$sa_mig_time_select))
     varied_param_col_name <- sensitivity_varied_param_info()$name
