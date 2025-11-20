@@ -791,7 +791,7 @@ server_dash <- function(input, output, session) {
         c(
           dm_name = dm$nm_data, # Name of the data model.
           series_name = dm$nm_series, # Series type (e.g., population, ins, outs).
-          dm_type = class(dm)[[1]], # Class of the data model object (e.g., accountTMB_datamod_exact).
+          dm_type = class(dm)[[1]], # Class of the data model object (e.g., dpmaccount_datamod_exact).
           dm_data_cols = paste(colnames(dm$data), collapse = ", ") # Comma-separated list of columns in its data.
         )
       })
@@ -1707,17 +1707,17 @@ server_dash <- function(input, output, session) {
     req(selected_dm_object) # Ensure it exists.
 
     # Determine parameter choices based on the class of the selected data model.
-    # The class names (e.g., "accountTMB_datamod_exact") are assumed conventions.
+    # The class names (e.g., "dpmaccount_datamod_exact") are assumed conventions.
     param_choices <- c("None") # Default.
     dm_class <- class(selected_dm_object)[[1]]
 
-    if (dm_class == "accountTMB_datamod_exact" || dm_class == "accountTMB_datamod_poisson") {
+    if (dm_class == "dpmaccount_datamod_exact" || dm_class == "dpmaccount_datamod_poisson") {
       param_choices <- c("None", "Count Scaler" = "count_scaler", "Scale Ratio" = "scale_ratio", "Coverage Ratio" = "ratio")
-    } else if (dm_class == "accountTMB_datamod_norm" || dm_class == "accountTMB_datamod_lognorm") {
+    } else if (dm_class == "dpmaccount_datamod_norm" || dm_class == "dpmaccount_datamod_lognorm") {
       param_choices <- c("None", "Count Scaler" = "count_scaler", "Scale Ratio" = "scale_ratio", "Minimum SD" = "min_sd", "SD Scaler" = "sd_scaler", "Coverage Ratio" = "ratio", "Constant SD" = "sd_overide")
-    } else if (dm_class == "accountTMB_datamod_t") {
+    } else if (dm_class == "dpmaccount_datamod_t") {
       param_choices <- c("None", "Count Scaler" = "count_scaler", "Scale Ratio" = "scale_ratio", "Coverage Ratio" = "ratio") # Potentially 'scale_df' or its components if applicable.
-    } else if (dm_class == "accountTMB_datamod_nbinom") {
+    } else if (dm_class == "dpmaccount_datamod_nbinom") {
       param_choices <- c("None", "Count Scaler" = "count_scaler", "Scale Ratio" = "scale_ratio", "Dispersion Scaler/Value" = "disp", "Coverage Ratio" = "ratio")
     }
     updateSelectInput(session, "sa_datamod_param_select", choices = param_choices, selected = "None")
@@ -1991,10 +1991,12 @@ server_dash <- function(input, output, session) {
                   rates_data <- rates_data %>%
                     mutate(across(all_of(rate_col_name), ~ ifelse(age %in% parse_values(input$sa_age_target) & sex %in% parse_values(input$sa_sex_target), current_param_value, single_disp))) %>%
                     rename(disp = rate_col_name)
+                  print(head(rates_data))
                 } else {
-                  rates_data <- rates_data %>%
-                    mutate(across(all_of(rate_col_name), ~ ifelse(age %in% parse_values(input$sa_age_target), current_param_value, single_disp))) %>%
-                    rename(disp = rate_col_name)
+                  # rates_data <- rates_data %>%
+                  #   mutate(across(all_of(rate_col_name), ~ ifelse(age %in% parse_values(input$sa_age_target), current_param_value, single_disp))) %>%
+                  #   rename(disp = rate_col_name)
+                  rates_data <- current_param_value
                 }
               } else {
                 if ("sex" %in% names(rates_data)) {
@@ -2002,9 +2004,10 @@ server_dash <- function(input, output, session) {
                     mutate(across(all_of(rate_col_name), ~ ifelse(age %in% parse_values(input$sa_age_target) & sex %in% parse_values(input$sa_sex_target) & time %in% parse_values(input$sa_time_target), current_param_value, single_disp))) %>%
                     rename(disp = rate_col_name)
                 } else {
-                  rates_data <- rates_data %>%
-                    mutate(across(all_of(rate_col_name), ~ ifelse(age %in% parse_values(input$sa_age_target) & time %in% parse_values(input$sa_time_target), current_param_value, single_disp))) %>%
-                    rename(disp = rate_col_name)
+                  # rates_data <- rates_data %>%
+                  #   mutate(across(all_of(rate_col_name), ~ ifelse(age %in% parse_values(input$sa_age_target) & time %in% parse_values(input$sa_time_target), current_param_value, single_disp))) %>%
+                  #   rename(disp = rate_col_name)
+                  rates_data <- current_param_value
                 }
               }
             }

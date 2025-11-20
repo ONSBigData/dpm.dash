@@ -90,7 +90,7 @@ ui_dash <- shinydashboard::dashboardPage(
       shinydashboard::tabItem(
         tabName = "introDoc", # Must match the tabName in menuItem.
         # Include content from an external Markdown file.
-        shiny::includeMarkdown(here::here("inst/extdata/guide.md")) # Uses 'here' to locate the file relative to project root.
+        shiny::includeMarkdown(system.file("extdata/guide.md", package = "dpm.dash")) # Uses 'here' to locate the file relative to project root.
       ),
       # Content for the "Global Configuration" tab.
       shinydashboard::tabItem(
