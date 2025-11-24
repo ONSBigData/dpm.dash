@@ -1,5 +1,13 @@
 # Pre-release changes/updates
 
+# dpm.dashboard 0.2.0
+
+## Modified available dashboard
+
+Removed bloat dashboards, keeping an extended single dashboard (launch_dashboard()) for running demo and sensitivity analysis.
+
+Restructured the package to fix bugs when installing the package rather than loading package functionality. 
+
 # dpm.dashboard 0.1.0
 
 ## Added a demo dashboard
