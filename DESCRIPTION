@@ -1,7 +1,7 @@
 Package: dpm.dash
 Type: Package
 Title: A Dynamic Population Modelling (DPM) Dashboard
-Version: 0.1.0
+Version: 0.2.0
 Authors@R: 
     person("Daniel", "Ward", , "daniel.ward@ons.gov.uk", role = c("aut", "cre"),
            comment = c(ORCID = "0000-0003-2498-0034"))
