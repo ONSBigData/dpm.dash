@@ -9,7 +9,7 @@ test_that("create_system_model creates a valid sysmod object", {
   sysmod <- create_system_model("births", rates_data, disp = 0.05)
 
   # Check class
-  expect_s3_class(sysmod, "accountTMB_sysmod")
+  expect_s3_class(sysmod, "dpmaccount_sysmod")
 
   # Check structure
   expect_equal(names(sysmod), c("mean", "disp", "nm_series"))
@@ -101,23 +101,23 @@ test_that("create_data_model creates correct datamod types", {
 
   # Exact Data Model
   exact_datamod <- create_data_model("ExactModel", "births", "Exact Data Model", flows_df)
-  expect_s3_class(exact_datamod, "accountTMB_datamod")  # Check the base class
+  expect_s3_class(exact_datamod, "dpmaccount_datamod")  # Check the base class
 
   # Normal Data Model
   normal_datamod <- create_data_model("NormalModel", "population", "Normal Data Model", counts_df, uncertainty_df = uncertainty_df)
-  expect_s3_class(normal_datamod, "accountTMB_datamod_norm")
+  expect_s3_class(normal_datamod, "dpmaccount_datamod_norm")
 
   # T-Dist Data Model
   tdist_datamod <- create_data_model("TDistModel", "population", "T-Dist Data Model", counts_df, scale_df = scale_df)
-  expect_s3_class(tdist_datamod, "accountTMB_datamod_t")
+  expect_s3_class(tdist_datamod, "dpmaccount_datamod_t")
 
   # Negative Binomial Data Model
   nb_datamod <- create_data_model("NBModel", "ins", "Negative Binomial Data Model", flows_df, disp = 0.8)
-  expect_s3_class(nb_datamod, "accountTMB_datamod_nbinom")
+  expect_s3_class(nb_datamod, "dpmaccount_datamod_nbinom")
 
   # Poisson Data Model
   poisson_datamod <- create_data_model("PoissonModel", "ins", "Poisson Data Model", flows_df)
-  expect_s3_class(poisson_datamod, "accountTMB_datamod_poisson")
+  expect_s3_class(poisson_datamod, "dpmaccount_datamod_poisson")
 })
 
 test_that("function handles invalid inputs gracefully", {

@@ -23,11 +23,6 @@
 #' my_rates_df <- data.frame(time = 1:5, rate = c(0.1, 0.12, 0.11, 0.13, 0.15), age = c(0, 0, 0, 0, 0))
 #' my_sysmod <- create_system_model(model_name = "births", rates_df = my_rates_df, disp = 0.05)
 #'
-#' @importFrom magrittr %>%
-#' @importFrom dplyr filter select mutate summarise group_by all_of where n
-#' @importFrom stats na.omit
-#' 
-#' 
 #' @export
 create_system_model <- function(
     model_name,

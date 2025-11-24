@@ -2,8 +2,17 @@
 % Please edit documentation in R/functions.R
 \name{create_system_model_region}
 \alias{create_system_model_region}
-\title{Create a accountTMB System Model Region}
+\title{Create a dpmaccount System Model Region}
 \usage{
+create_system_model_region(
+  model_name,
+  rates_df,
+  disp,
+  region_selection,
+  time_selection = NULL,
+  lower_rates_limit = 0
+)
+
 create_system_model_region(
   model_name,
   rates_df,
@@ -27,15 +36,25 @@ create_system_model_region(
 \item{lower_rates_limit}{(Optional) A numerical lower limit to apply to the rate being used to create the system model}
 }
 \value{
-An object of class \code{accountTMB_sysmod} representing the created system model. This object can be used in subsequent accountTMB analyses.
+An object of class \code{accountTMB_sysmod} representing the created system model. This object can be used in subsequent dpmaccount analyses.
+
+An object of class \code{accountTMB_sysmod} representing the created system model. This object can be used in subsequent dpmaccount analyses.
 }
 \description{
-This function creates a system model object (of class \code{accountTMB_sysmod}) for use in accountTMB, a package for accounting time series modeling. The system model describes the mean and dispersion of the rates over time.
+This function creates a system model object (of class \code{accountTMB_sysmod}) for use in dpmaccount, a package for accounting time series modeling. The system model describes the mean and dispersion of the rates over time.
+
+This function creates a system model object (of class \code{accountTMB_sysmod}) for use in dpmaccount, a package for accounting time series modeling. The system model describes the mean and dispersion of the rates over time.
 }
 \details{
-This function simplifies the creation of system models compatible with accountTMB. It allows you to model the mean and dispersion of rates, optionally focusing on specific time periods if desired.
+This function simplifies the creation of system models compatible with dpmaccount. It allows you to model the mean and dispersion of rates, optionally focusing on specific time periods if desired.
+
+This function simplifies the creation of system models compatible with dpmaccount. It allows you to model the mean and dispersion of rates, optionally focusing on specific time periods if desired.
 }
 \examples{
+# Example usage (assuming you have an appropriate rates data frame):
+my_rates_df <- data.frame(time = 1:5, rate = c(0.1, 0.12, 0.11, 0.13, 0.15), age = c(0, 0, 0, 0, 0))
+my_sysmod <- create_system_model(model_name = "births", rates_df = my_rates_df, disp = 0.05)
+
 # Example usage (assuming you have an appropriate rates data frame):
 my_rates_df <- data.frame(time = 1:5, rate = c(0.1, 0.12, 0.11, 0.13, 0.15), age = c(0, 0, 0, 0, 0))
 my_sysmod <- create_system_model(model_name = "births", rates_df = my_rates_df, disp = 0.05)
